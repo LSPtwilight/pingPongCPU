@@ -10,7 +10,9 @@ module alu(A, B, ALUOp, C, Zero,PC);
    
    reg [31:0] C;
    integer    i;
-       
+   
+   reg [63:0] product;
+
    always @( * ) begin
       case ( ALUOp )
 `ALUOp_nop:C=A;
@@ -33,6 +35,13 @@ module alu(A, B, ALUOp, C, Zero,PC);
 `ALUOp_sra:C=A>>>B;
 `ALUOp_nor:C=~(A|B);
 `ALUOp_beq:C={31'b0,(A!=B)};
+`ALUOp_mulw:begin product = A * B; C = product[31:0]; end
+`ALUOp_mulhw:begin product = A * B; C = product[63:32]; end
+`ALUOp_mulhwu:begin product = $unsigned(A) * $unsigned(B); C = product[63:32]; end
+`ALUOp_divw: C = A / B;
+`ALUOp_divwu: C = $unsigned(A) / $unsigned(B);
+`ALUOp_modw: C = A % B;
+`ALUOp_modwu: C = $unsigned(A) % $unsigned(B);
 default: C=32'h0;
 
       endcase

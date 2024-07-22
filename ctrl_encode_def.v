@@ -53,6 +53,13 @@
 `define ALUOp_sra 5'b10001
 `define ALUOp_nor 5'b10010
 `define ALUOp_beq 5'b10011
+`define ALUOp_mulw 5'b10100
+`define ALUOp_mulhw 5'b10101
+`define ALUOp_mulhwu 5'b10110
+`define ALUOp_divw 5'b10111
+`define ALUOp_modw 5'b11000
+`define ALUOp_divwu 5'b11001
+`define ALUOp_modwu 5'b11010
 
 `define dm_word 3'b000
 `define dm_halfword 3'b001

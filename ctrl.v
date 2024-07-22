@@ -99,6 +99,13 @@ wire        inst_bl;
 wire        inst_beq;
 wire        inst_bne;
 wire        inst_lu12i_w;
+wire        inst_mul_w;
+wire        inst_mulh_w;
+wire        inst_mulh_wu;
+wire        inst_div_w;
+wire        inst_mod_w;
+wire        inst_div_wu;
+wire        inst_mod_wu;
 
 wire        need_ui5;
 wire        need_si12;
@@ -190,6 +197,15 @@ assign inst_blt = op_31_26_d[6'b011000];
 assign inst_bge = op_31_26_d[6'b011001];
 assign inst_bltu = op_31_26_d[6'b011010];
 assign inst_bgeu = op_31_26_d[6'b011011];
+
+// mul and div
+assign inst_mul_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h18];
+assign inst_mulh_w  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h19];
+assign inst_mulh_wu = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h1] & op_19_15_d[5'h1a];
+assign inst_div_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h00];
+assign inst_mod_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h01];
+assign inst_div_wu  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h02];
+assign inst_mod_wu  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h03];
 
 assign MemRead = inst_ld_b | inst_ld_h | inst_ld_w | inst_ld_bu | inst_ld_hu;
 
@@ -403,22 +419,34 @@ assign rkd_value = rf_rdata2;
 // ALUOp_sra 5'b10001
 // ALUOp_nor 5'b10010
 // ALUOp_beq 5'b10011
+// ALUOp_mulw 5'b10100
+// ALUOp_mulhw 5'b10101
+// ALUOp_mulhwu 5'b10110
+// ALUOp_divw 5'b10111
+// ALUOp_modw 5'b11000
+// ALUOp_divwu 5'b11001
+// ALUOp_modwu 5'b11010
 
-assign ALUOp[4] = inst_srli_w | inst_srai_w | inst_nor | inst_srl_w | inst_sra_w | inst_beq;
+assign ALUOp[4] = inst_srli_w | inst_srai_w | inst_nor | inst_srl_w | inst_sra_w | inst_beq 
+                | inst_mul_w | inst_mulh_w | inst_mulh_wu | inst_div_w | inst_mod_w | inst_div_wu | inst_mod_wu;
     
 assign ALUOp[3] = inst_sltu | inst_slt | inst_and | inst_or | inst_xor | inst_slli_w | inst_slti | inst_sltui | inst_andi | inst_ori | inst_xori
-                | inst_sll_w | inst_bltu | inst_bgeu;
+                | inst_sll_w | inst_bltu | inst_bgeu
+                | inst_mod_w | inst_div_wu | inst_mod_wu;
     
 assign ALUOp[2] = inst_sub_w | inst_and | inst_or | inst_xor | inst_slli_w | inst_andi |inst_ori | inst_xori | inst_sll_w | inst_bne | inst_blt
-                  | inst_bge;
+                  | inst_bge
+                  | inst_mul_w | inst_mulh_w | inst_mulh_wu | inst_div_w;
 
 assign ALUOp[1] = inst_add_w | inst_sltu | inst_slt | inst_and | inst_slli_w | inst_addi_w | inst_ld_w | inst_st_w | inst_nor 
                 | inst_jirl | inst_b | inst_bl | inst_slti | inst_sltui | inst_andi | inst_sll_w | inst_pcaddu12i | inst_beq | inst_blt | inst_bge
-                | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu | inst_st_b | inst_st_h;
+                | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu | inst_st_b | inst_st_h
+                | inst_mulh_wu | inst_div_w | inst_mod_wu;
 	  
 assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w | inst_addi_w | inst_ld_w | inst_st_w 
                 | inst_jirl | inst_b | inst_bl | inst_lu12i_w | inst_sltui | inst_ori | inst_sll_w | inst_sra_w | inst_pcaddu12i | inst_beq | inst_bne | inst_bge
-                | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu | inst_st_b | inst_st_h | inst_bgeu;
+                | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu | inst_st_b | inst_st_h | inst_bgeu
+                | inst_mulh_w | inst_div_w | inst_div_wu;
 	
 //DM_Type: 
 assign DMType = {2'b0, inst_st_w};
