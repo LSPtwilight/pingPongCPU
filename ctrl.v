@@ -381,8 +381,8 @@ assign rkd_value = rf_rdata2;
   // WDSel_FromALU 2'b00
   // WDSel_FromMEM 2'b01
   // WDSel_FromPC  2'b10
-  assign WDSel[1] = i_jal | i_jalr | inst_jirl | inst_bl ;
-  assign WDSel[0] = itype_l | inst_ld_w | inst_st_w ;
+  assign WDSel[1] = /*i_jal | i_jalr | */inst_jirl | inst_bl ;
+  assign WDSel[0] = /*itype_l | */inst_ld_w | inst_ld_b | inst_ld_bu | inst_ld_h | inst_ld_hu/*| inst_st_w*/;
 
 // NPC_PLUS4      5'b00000
 // NPC_BRANCH     5'b00001
@@ -449,7 +449,19 @@ assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w |
                 | inst_mulh_w | inst_div_w | inst_div_wu;
 	
 //DM_Type: 
-assign DMType = {2'b0, inst_st_w};
+//assign DMType = {2'b0, inst_st_w};
+
+// dm_word 3'b000
+// dm_halfword 3'b001
+// dm_halfword_unsigned 3'b010
+// dm_byte 3'b011
+// dm_byte_unsigned 3'b100
+    //assign DMType[2] = i_lbu;
+    //assign DMType[1] = i_lb | i_lhu | i_sb;
+    //assign DMType[0] = i_lb | i_lh | i_sb | i_sh;
+    assign DMType[2] = inst_ld_bu;
+    assign DMType[1] = inst_ld_b | inst_ld_hu | inst_st_b;
+    assign DMType[0] = inst_ld_b | inst_ld_h | inst_st_b | inst_st_h;
 
     
     wire UNDEFINED = ~(syscall | break | ERET | ERETN | LUI | AUIPC | i_add  | i_sub | i_or | i_and | i_xor | i_sll | i_slt | i_sltu | i_srl | i_sra |

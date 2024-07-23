@@ -110,7 +110,7 @@ always @(posedge clk) reset <= ~resetn;
 	wire [2:0] MEM_DMType;
 	wire [1:0] MEM_WDSel;
 
-    assign DMType = MEM_DMType;
+    //assign DMType = MEM_DMType;
     
     //WB wires
     wire [4:0]  WB_rd;
@@ -131,8 +131,11 @@ always @(posedge clk) reset <= ~resetn;
 	
     wire [31:0] aluout;
     assign data_sram_addr = (EX_MemRead|EX_MemWrite)? aluout: 32'h0;
-	assign data_sram_wdata = EX_MemWrite? alu_in2: 32'h0;
-    assign data_sram_we = {4{EX_MemWrite}};
+	//assign data_sram_wdata = EX_MemWrite? alu_in2: 32'h0;
+    //assign data_sram_we = {4{EX_MemWrite}};
+    //assign data_sram_addr = (MEM_MemRead|MEM_MemWrite)? MEM_aluout: 32'h0;
+    //assign data_sram_wdata = MEM_MemWrite? MEM_RD2: 32'h0;
+    //assign data_sram_we = {4{MEM_MemWrite}};
     //assign B = (EX_ALUSrc) ? EX_immout : EX_RD2;//whether from EXT
 
 	
@@ -228,6 +231,17 @@ begin
 	endcase
 end
 
+//-----dm_controller--------------
+wire [31:0] data_read/* = data_sram_rdata*/;
+Dm_Controller dm_controller(
+  // EX
+  .mem_w(EX_MemWrite), .EX_Addr_in(data_sram_addr), 
+  .Data_write(EX_MemWrite? alu_in2: 32'h0), .EX_DMType(EX_DMType), 
+  // MEM
+  .MEM_Addr_in(MEM_aluout), .MEM_DMType(MEM_DMType), .Data_read_from_dm(data_sram_rdata), 
+  // output
+  .Data_read(data_read/*MEM*/), .Data_write_to_dm(data_sram_wdata/*EX*/), .wea_mem(data_sram_we/*EX*/)
+  );
 
 
 //-----Exceptions-----------------
@@ -420,6 +434,7 @@ end
     gnrl_dff #(32) ex_mem_pc(clk, reset, EX_MEM_write_enable, EX_MEM_flush, EX_pc, MEM_pc);
     
     assign data_sram_en = EX_MemRead|EX_MemWrite;
+    //assign data_sram_en = EX_MemRead|MEM_MemWrite;
 
 
     //MEM_WB
@@ -429,7 +444,8 @@ end
     assign MEM_WB_in[31:0] = EX_MEM_out[31:0];
     assign MEM_WB_in[36:32] = MEM_rd;
     assign MEM_WB_in[68:37] = MEM_aluout;
-    assign MEM_WB_in[100:69] = data_sram_rdata;
+    //assign MEM_WB_in[100:69] = data_sram_rdata;
+    assign MEM_WB_in[100:69] = data_read;
     assign MEM_WB_in[101] = MEM_RegWrite;
     assign MEM_WB_in[103:102] = MEM_WDSel;
     wire [103:0] MEM_WB_out;
