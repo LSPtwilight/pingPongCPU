@@ -91,8 +91,24 @@ always @(posedge clk) reset <= ~resetn;
 
     // exceptions
     wire        exc_sig;
+    /*--exception request signals--*/
+    wire        INT;
+    wire        PIL;
+    wire        PIS;
+    wire        PIF;
+    wire        PME;
+    wire        PPI;
+    wire        ADEF;
+    wire        ADEM;
+    wire        ALE;
     wire        SYS;
-    //...
+    wire        BRK;
+    wire        INE;
+    wire        IPE;
+    wire        FPD;
+    wire        FPE;
+    wire        TLBR;
+    /*-----------------------------*/
     wire        ERTN;
     wire        EX_ERTN;
     wire        IE;
@@ -250,7 +266,7 @@ always @(posedge clk) reset <= ~resetn;
         .csr_mask_en(csr_mask_en), 
         .csr_write(csr_write),
         .ERTN(ERTN),
-        .SYS(SYS)
+        .SYS(SYS), .BRK(BRK), .INE(INE)
 	);
  // instantiation of pc unit
 	//PC U_PC(.clk(clk), .rst(reset), .write(~stall_signal), .NPC(NPC), .PC(pc) );
@@ -344,30 +360,50 @@ Dm_Controller dm_controller(
   .Data_read(data_read/*MEM*/), .Data_write_to_dm(data_sram_wdata/*EX*/), .wea_mem(wea_mem/*EX*/)
   );
 
-assign data_sram_we = wea_mem & {4{~exc_sig}};
+assign data_sram_we = wea_mem & {4{~exc_sig}} & {4{~EX_exc_req_out}};
 
 //-----Exceptions-----------------
 
+// ADEF
+assign ADEF = 1'b0;//inst_sram_addr[0] | inst_sram_addr[1];
+// ALE
+assign ALE = 1'b0;//(EX_MemRead | EX_MemWrite) & (~EX_DMType[2]&~EX_DMType[1]&~EX_DMType[0]&(aluout[0]|aluout[1]) 
+            //| ((~EX_DMType[2]&~EX_DMType[1]& EX_DMType[0] | ~EX_DMType[2]& EX_DMType[1]&~EX_DMType[0]) & aluout[0]));
+
 // IF
-assign IF_exc_req_in  = 1'b0;
-assign IF_exc_req_out = 1'b0;
+assign INT = 1'b0; // for testing
+assign IF_exc_req_in  = INT;
+assign IF_Ecode_in    = 6'b0;
+assign IF_EsubCode_in = 9'b0;
+
+assign IF_exc_req_out = IF_exc_req_in | ADEF;
+assign IF_Ecode_out   = IF_exc_req_in==1'b1 ? IF_Ecode_in :
+                        {6{ADEF}} & `Ecode_ADEF;
+                        //... TLBs
+assign IF_EsubCode_out= IF_exc_req_in==1'b1 ? IF_EsubCode_in :
+                        {9{ADEF}} & `EsubCode_ADEF;
+                        //... TLBs
 
 // ID
-assign ID_exc_req_out  = ID_exc_req_in | SYS;
+assign ID_exc_req_out  = ID_exc_req_in | SYS | BRK | INE;
 assign ID_Ecode_out    = ID_exc_req_in==1'b1 ? ID_Ecode_in : 
-                         {6{SYS}} & `Ecode_SYS;
+                         {6{SYS}} & `Ecode_SYS 
+                        |{6{BRK}} & `Ecode_BRK
+                        |{6{INE}} & `Ecode_INE;
                          //...
 assign ID_EsubCode_out = ID_exc_req_in==1'b1 ? ID_EsubCode_in:
-                         {9{SYS}} & `EsubCode_SYS;
+                         {9{SYS}} & `EsubCode_SYS
+                        |{9{BRK}} & `EsubCode_BRK
+                        |{9{INE}} & `EsubCode_INE;
                          //...
 
 // EX
-assign EX_exc_req_out  = EX_exc_req_in;
+assign EX_exc_req_out  = EX_exc_req_in | ALE;
 assign EX_Ecode_out    = EX_exc_req_in==1'b1 ? EX_Ecode_in : 
-                         6'b0;
+                         {6{ALE}} & `Ecode_ALE;
                          //...
-assign EX_EsubCode_out = EX_exc_req_in==1'b1 ? EX_EsubCode_in:
-                         9'b0;
+assign EX_EsubCode_out = EX_exc_req_in==1'b1 ? EX_EsubCode_in :
+                         {9{ALE}} & `EsubCode_ALE;
                          //...
 
 // MEM

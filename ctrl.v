@@ -11,7 +11,7 @@ module ctrl(STATUS,
             rdOut, rs1, rs2, // reg 
             csr_num, csr_mask_en, csr_write,//csr
             ERTN,
-            SYS  // exception signals
+            SYS, BRK, INE  // exception signals
             );
             
    input [7:0] STATUS;
@@ -50,6 +50,8 @@ module ctrl(STATUS,
 
    output ERTN;
    output SYS;
+   output BRK;
+   output INE;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 wire [11:0] alu_op;
@@ -235,10 +237,11 @@ assign inst_ertn    = op_31_26_d[6'h01] & op_25_22_d[4'h9] & op_21_20_d[2'h0] & 
                     & (inst[14:10]==5'h0e);
 assign ERTN = inst_ertn;
 
-assign inst_break   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h14];
 assign inst_syscall = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h16];
+assign inst_break   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h14];
 
 assign SYS = inst_syscall;
+assign BRK = inst_break;
 
 assign MemRead = inst_ld_b | inst_ld_h | inst_ld_w | inst_ld_bu | inst_ld_hu;
 
@@ -502,13 +505,50 @@ assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w |
     assign DMType[1] = inst_ld_b | inst_ld_hu | inst_st_b;
     assign DMType[0] = inst_ld_b | inst_ld_h | inst_st_b | inst_st_h;
 
+
+    assign INE = ~
+    (
+             inst_add_w
+    |        inst_sub_w
+    |        inst_slt
+    |        inst_sltu
+    |        inst_nor
+    |        inst_and
+    |        inst_or
+    |        inst_xor
+    |        inst_slli_w
+    |        inst_srli_w
+    |        inst_srai_w
+    |        inst_addi_w
+    |        inst_ld_w
+    |        inst_st_w
+    |        inst_jirl
+    |        inst_b
+    |        inst_bl
+    |        inst_beq
+    |        inst_bne
+    |        inst_lu12i_w
+    |        inst_mul_w
+    |        inst_mulh_w
+    |        inst_mulh_wu
+    |        inst_div_w
+    |        inst_mod_w
+    |        inst_div_wu
+    |        inst_mod_wu
+    |        inst_csrrd
+    |        inst_csrwr
+    |        inst_csrxchg
+    |        inst_ertn
+    |        inst_break
+    |        inst_syscall
+    );
     
-    wire UNDEFINED = ~(syscall | break | ERET | ERETN | LUI | AUIPC | i_add  | i_sub | i_or | i_and | i_xor | i_sll | i_slt | i_sltu | i_srl | i_sra |
+    /*wire UNDEFINED = ~(syscall | break | ERET | ERETN | LUI | AUIPC | i_add  | i_sub | i_or | i_and | i_xor | i_sll | i_slt | i_sltu | i_srl | i_sra |
                 i_lb | i_lh | i_lw | i_lbu | i_lhu | i_addi | i_ori | i_andi | i_xori | i_slli | i_slti | i_sltiu | i_srli | i_srai |
                 i_jalr | i_sb | i_sh | i_sw | i_beq | i_bne | i_blt | i_bge | i_bltu | i_bgeu | i_jal);
     
     //assign SCAUSE = {2'b0, 1'b0, 2'b0, break, syscall, 1'b0};
     assign ID_SCAUSE = {5'b0, break, syscall, 1'b0};
-    assign EXL_Clear = ERET | ERETN;
+    assign EXL_Clear = ERET | ERETN;*/
 
 endmodule
