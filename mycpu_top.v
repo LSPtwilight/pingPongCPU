@@ -1,4 +1,6 @@
 `include "ctrl_encode_def.v"
+`include "CSR_def.v"
+
 module mycpu_top(
     input  wire        clk,
     input  wire        resetn,
@@ -65,11 +67,16 @@ always @(posedge clk) reset <= ~resetn;
 	wire [11:0] iimm,simm,bimm;
 	wire [19:0] uimm,jimm;
 	wire [31:0] imm4alu,imm4pc;
+
+    wire [13:0] csr_num;
+    wire csr_mask_en;
+    wire csr_write;
+    wire [31:0] csr_data;
 	
     wire MemRead;
 
 	//Exception wires and regs
-	wire [7:0] ID_SCAUSE;
+	/*wire [7:0] ID_SCAUSE;
 	wire [7:0] EX_SCAUSE;
 	wire [2:0] INT_PEND;
 	reg [31:0] SEPC;
@@ -80,7 +87,41 @@ always @(posedge clk) reset <= ~resetn;
 	wire ID_EXL_Clear;
 	wire EXL_Clear;
 	wire EXL_Set;
-	wire INT_Signal;
+	wire INT_Signal;*/
+
+    // exceptions
+    wire        exc_sig;
+    wire        SYS;
+    //...
+    wire        ERTN;
+    wire        EX_ERTN;
+    wire        IE;
+    wire [31:0] ERA;
+    wire [31:0] EENTRY;
+    wire        IF_exc_req_in;
+    wire        IF_exc_req_out;
+    wire [ 5:0] IF_Ecode_in;
+    wire [ 8:0] IF_EsubCode_in;
+    wire [ 5:0] IF_Ecode_out;
+    wire [ 8:0] IF_EsubCode_out;
+    wire        ID_exc_req_in;
+    wire        ID_exc_req_out;
+    wire [ 5:0] ID_Ecode_in;
+    wire [ 8:0] ID_EsubCode_in;
+    wire [ 5:0] ID_Ecode_out;
+    wire [ 8:0] ID_EsubCode_out;
+    wire        EX_exc_req_in;
+    wire        EX_exc_req_out;
+    wire [ 5:0] EX_Ecode_in;
+    wire [ 8:0] EX_EsubCode_in;
+    wire [ 5:0] EX_Ecode_out;
+    wire [ 8:0] EX_EsubCode_out;
+    wire        MEM_exc_req_in;
+    wire        MEM_exc_req_out;
+    wire [ 5:0] MEM_Ecode_in;
+    wire [ 8:0] MEM_EsubCode_in;
+    wire [ 5:0] MEM_Ecode_out;
+    wire [ 8:0] MEM_EsubCode_out;
 	
 	//EX wires
 	wire [4:0] EX_rd;
@@ -100,6 +141,13 @@ always @(posedge clk) reset <= ~resetn;
     wire EX_MemRead;
     wire [31:0] EX_pc;
     wire [31:0] ID_pc;
+
+    wire [31:0] EX_csr_data;
+    reg  [31:0] alu_csr_data;
+    wire [13:0] EX_csr_num;
+    wire EX_csr_mask_en;
+    wire EX_csr_write;
+    wire [31:0] EX_csr_wd;
 	
 	//MEM wires
 	wire [4:0] MEM_rd;
@@ -109,6 +157,9 @@ always @(posedge clk) reset <= ~resetn;
 	wire        MEM_MemWrite;
 	wire [2:0] MEM_DMType;
 	wire [1:0] MEM_WDSel;
+    wire [13:0] MEM_csr_num;
+    wire MEM_csr_write;
+    wire [31:0] MEM_csr_wd;
 
     //assign DMType = MEM_DMType;
     
@@ -119,12 +170,16 @@ always @(posedge clk) reset <= ~resetn;
     wire        WB_RegWrite;
     wire [1:0]  WB_WDSel;
 	wire [31:0] WB_pc;
+    wire [13:0] WB_csr_num;
+    wire WB_csr_write;
+    wire [31:0] WB_csr_wd;
 	
 	//Forwarding control wires
 	wire [1:0] ForwardA;//first alu source: alu_in1
 	wire [1:0] ForwardB;//second alu source:alu_in2
 	reg [31:0] alu_in1;//to be chosen by forwarding unit
 	reg [31:0] alu_in2;
+    wire [1:0] ForwardCSR2ALU;
 	
 	//Hazard detection unit wires
 	wire stall_signal;
@@ -190,7 +245,12 @@ always @(posedge clk) reset <= ~resetn;
         .EXL_Clear(ID_EXL_Clear),
         .rs1(rs1), 
         .rs2(rs2), 
-        .rdOut(rd)
+        .rdOut(rd),
+        .csr_num(csr_num), 
+        .csr_mask_en(csr_mask_en), 
+        .csr_write(csr_write),
+        .ERTN(ERTN),
+        .SYS(SYS)
 	);
  // instantiation of pc unit
 	//PC U_PC(.clk(clk), .rst(reset), .write(~stall_signal), .NPC(NPC), .PC(pc) );
@@ -198,8 +258,8 @@ always @(posedge clk) reset <= ~resetn;
 	//NPC U_NPC(.PC(pc), .EX_pc(EX_pc), .ID_pc(ID_pc), .SEPC(SEPC), .NPCOp(NPCOp),
 	//           .INT_Signal(INT_Signal), .INT_PEND(INT_PEND), .IMM(immout/*?*/), .NPC(NPC), .aluout(aluout));
 
-	NPC U_NPC(.PC(pc), .EX_pc(EX_pc), .ID_pc(EX_pc), .SEPC(SEPC), .NPCOp(EX_NPCOp),
-	           .INT_Signal(INT_Signal), .INT_PEND(INT_PEND), .IMM(EX_imm4pc/*?*/), .NPC(NPC), .EX_RD1(EX_RD1), .branch_flag(Zero), .stall_signal(stall_signal));
+	NPC U_NPC(.PC(pc), .EX_pc(EX_pc), .ID_pc(EX_pc), .SEPC(ERA), .NPCOp(EX_NPCOp),
+	           .exc_sig(exc_sig), .EENTRY(EENTRY), .IMM(EX_imm4pc/*?*/), .NPC(NPC), .EX_RD1(EX_RD1), .branch_flag(Zero), .stall_signal(stall_signal));
 
 	EXT U_EXT(
 		.iimm_shamt(iimm_shamt), .iimm(iimm), .simm(simm), .bimm(bimm),
@@ -215,8 +275,48 @@ always @(posedge clk) reset <= ~resetn;
 		//.reg_sel(reg_sel),
 		//.reg_data(reg_data)
 	);
+
+    CSR U_CSR(
+        .clk(clk), 
+        .rst(reset),
+        /* reading and writing */
+        .csr_write  (WB_csr_write)/*WB*/, 
+        .read_addr  (csr_num)     /*ID*/,
+        .write_addr (WB_csr_num)  /*WB*/, 
+        .WD         (WB_csr_wd)   /*WB*/, 
+        //output
+        .RDout      (csr_data),   /*ID*/
+        /* forwarding */
+        .MEM_csr_write (MEM_csr_write),
+        .MEM_csr_num   (MEM_csr_num),
+        .MEM_csr_wd    (MEM_csr_wd),
+        /* external INT signals */
+        .HWI_in(8'b0),
+        .TI_in (1'b0),
+        .IPI_in(1'b0),
+        // CPU states
+        //.IE(IE),//output
+        /* exceptions */
+        .exc_sig   (exc_sig),
+        .Ecode     (MEM_Ecode_out),
+        .EsubCode  (MEM_EsubCode_out),
+        .PC        (MEM_pc),//interupted instruction
+        .ERTN      (EX_ERTN),
+        .EENTRY_out(EENTRY),//output
+        .ERA_out   (ERA)//output
+    );
+
+    csr_alu U_csr_alu(
+        .rd(/*EX_RD2*/alu_in2),
+        .rj(/*EX_RD1*/alu_in1), 
+        .csr_data(/*EX_csr_data*/alu_csr_data),
+        .csr_num(EX_csr_num), /*write_addr*/
+        .mask_en(EX_csr_mask_en), /*for csrxchg*/
+        //output
+        .csr_wd(EX_csr_wd)
+    );
 // instantiation of alu unit
-	alu U_alu(.A(A), .B(B), .ALUOp(EX_ALUOp), .C(aluout), .Zero(Zero), .PC(EX_pc));
+	alu U_alu(.A(A), .B(B), .ALUOp(EX_ALUOp), .C(aluout), .Zero(Zero), .PC(EX_pc), .csr_data(alu_csr_data));
 	
 //please connnect the CPU by yourself
 
@@ -233,6 +333,7 @@ end
 
 //-----dm_controller--------------
 wire [31:0] data_read/* = data_sram_rdata*/;
+wire [3:0] wea_mem;
 Dm_Controller dm_controller(
   // EX
   .mem_w(EX_MemWrite), .EX_Addr_in(data_sram_addr), 
@@ -240,12 +341,47 @@ Dm_Controller dm_controller(
   // MEM
   .MEM_Addr_in(MEM_aluout), .MEM_DMType(MEM_DMType), .Data_read_from_dm(data_sram_rdata), 
   // output
-  .Data_read(data_read/*MEM*/), .Data_write_to_dm(data_sram_wdata/*EX*/), .wea_mem(data_sram_we/*EX*/)
+  .Data_read(data_read/*MEM*/), .Data_write_to_dm(data_sram_wdata/*EX*/), .wea_mem(wea_mem/*EX*/)
   );
 
+assign data_sram_we = wea_mem & {4{~exc_sig}};
 
 //-----Exceptions-----------------
 
+// IF
+assign IF_exc_req_in  = 1'b0;
+assign IF_exc_req_out = 1'b0;
+
+// ID
+assign ID_exc_req_out  = ID_exc_req_in | SYS;
+assign ID_Ecode_out    = ID_exc_req_in==1'b1 ? ID_Ecode_in : 
+                         {6{SYS}} & `Ecode_SYS;
+                         //...
+assign ID_EsubCode_out = ID_exc_req_in==1'b1 ? ID_EsubCode_in:
+                         {9{SYS}} & `EsubCode_SYS;
+                         //...
+
+// EX
+assign EX_exc_req_out  = EX_exc_req_in;
+assign EX_Ecode_out    = EX_exc_req_in==1'b1 ? EX_Ecode_in : 
+                         6'b0;
+                         //...
+assign EX_EsubCode_out = EX_exc_req_in==1'b1 ? EX_EsubCode_in:
+                         9'b0;
+                         //...
+
+// MEM
+assign MEM_exc_req_out  = MEM_exc_req_in;
+assign MEM_Ecode_out    = MEM_exc_req_in==1'b1 ? MEM_Ecode_in : 
+                         6'b0;
+                         //...
+assign MEM_EsubCode_out = MEM_exc_req_in==1'b1 ? MEM_EsubCode_in:
+                         9'b0;
+                         //...
+
+assign exc_sig = MEM_exc_req_out/* & IE*/;
+
+/*
     ExceptionCtrl exception_ctrl(
     .STATUS(STATUS),
     .EX_SCAUSE(EX_SCAUSE),
@@ -280,7 +416,7 @@ Dm_Controller dm_controller(
    // ALUOp_add 5'b00011
    // ALUOp_sub 5'b00100
     wire IntOverflow = ~EX_ALUOp[4]&~EX_ALUOp[3]&~EX_ALUOp[2]& EX_ALUOp[1]& EX_ALUOp[0] & ( A[31]&B[31]&~aluout[31] | ~A[31]&~B[31]&aluout[31]);
-
+*/
 
 //-----Branch or Jump-------------
 
@@ -299,6 +435,8 @@ Dm_Controller dm_controller(
     );
 
 //-----ForwardingUnit-------------
+
+    // ALU to ALU  and  ALU to CSR
     ForwardingUnit forwadingUnitA(.MEM_RegWrite(MEM_RegWrite), .MEM_rd(MEM_rd), 
         .WB_RegWrite(WB_RegWrite), .WB_rd(WB_rd), .EX_rs(EX_rs1), .ForwardSignal(ForwardA));
     ForwardingUnit forwadingUnitB(.MEM_RegWrite(MEM_RegWrite), .MEM_rd(MEM_rd), 
@@ -307,38 +445,70 @@ Dm_Controller dm_controller(
     always @(*)
     begin
         case(ForwardA)
-            2'b00: alu_in1 <= EX_RD1;//from regfile
-            2'b10: alu_in1 <= MEM_aluout;//from MEM
-            2'b01: alu_in1 <= WD;    // from WB
+            2'b00: alu_in1 <= EX_rs1 != 5'b0 ? EX_RD1 : 32'b0;     //from regfile
+            2'b10: alu_in1 <= EX_rs1 != 5'b0 ? MEM_aluout : 32'b0; //from MEM
+            2'b01: alu_in1 <= EX_rs1 != 5'b0 ? WD : 32'b0;         // from WB
         endcase
     end
     always @(*)
     begin
         case(ForwardB)
-            2'b00: alu_in2 <= EX_RD2;//from regfile
-            2'b10: alu_in2 <= MEM_aluout;//from MEM
-            2'b01: alu_in2 <= WD;    // from WB
+            2'b00: alu_in2 <= EX_rs2 != 5'b0 ? EX_RD2 : 32'b0;     //from regfile
+            2'b10: alu_in2 <= EX_rs2 != 5'b0 ? MEM_aluout : 32'b0; //from MEM
+            2'b01: alu_in2 <= EX_rs2 != 5'b0 ? WD : 32'b0;         // from WB
         endcase
     end
     
     assign A = (EX_ALUSrc1) ? EX_pc : alu_in1;
     assign B = (EX_ALUSrc2) ? EX_imm4alu : alu_in2;//whether from EXT
 
+    // CSR to ALU  and  CSR to CSR
+    ForwardingUnit #(.WIDTH(14)) forwardingCSR2ALU(.MEM_RegWrite(MEM_csr_write), .MEM_rd(MEM_csr_num), 
+        .WB_RegWrite(WB_csr_write), .WB_rd(WB_csr_num), .EX_rs(EX_csr_num), .ForwardSignal(ForwardCSR2ALU));
+    
+    always @(*)
+    begin
+        case(ForwardCSR2ALU)
+            2'b00: alu_csr_data <= EX_csr_data;// from regfile
+            2'b10: alu_csr_data <= MEM_csr_wd; // from MEM
+            2'b01: alu_csr_data <= WB_csr_wd;  // from WB
+        endcase
+    end
+
+    /*// EENTRY
+    ForwardingUnit #(.WIDTH(14)) forwardingCSR2ALU(.MEM_RegWrite(1'b0), .MEM_rd(14'b0), 
+        .WB_RegWrite(WB_csr_write), .WB_rd(WB_csr_num), .EX_rs(`EENTRY), .ForwardSignal(ForwardEENTRY));
+    always @(*)
+    begin
+        case(ForwardCSR2ALU)
+            2'b00: alu_csr_data <= EENTRY;// from regfile
+            2'b10: alu_csr_data <= MEM_csr_wd; // from MEM
+            2'b01: alu_csr_data <= WB_csr_wd;  // from WB
+        endcase
+    end*/
+
 //-----pipe registers--------------
 
     //IF_ID: [31:0]PC [31:0]instr
     wire IF_ID_write_enable = ~stall_signal;
-    wire IF_ID_flush = Branch_or_Jump | INT_Signal;
-    wire [71:0] IF_ID_in;
+    wire IF_ID_flush = Branch_or_Jump | exc_sig;
+    wire [79:0] IF_ID_in;
     assign IF_ID_in[31:0] = pc;//?????????????????????
     assign IF_ID_in[63:32] = inst_sram_rdata;
     //assign IF_ID_in[71:64] = {EXINT, 7'b0};
-    assign IF_ID_in[71:64] = 8'b0;
-    wire [71:0] IF_ID_out;
+    //assign IF_ID_in[71:64] = 8'b0;
+    assign IF_ID_in[64]    = IF_exc_req_out;
+    assign IF_ID_in[70:65] = IF_Ecode_out;
+    assign IF_ID_in[79:71] = IF_EsubCode_out;
+
+    wire [79:0] IF_ID_out;
     //assign instr = IF_ID_out[63:32];
     assign instr = IF_ID_out[63:32];
     //assign ID_pc = IF_ID_out[31:0];
-    GRE_array #(.WIDTH(72))
+    assign ID_exc_req_in  = IF_ID_out[64];
+    assign ID_Ecode_in    = IF_ID_out[70:65];
+    assign ID_EsubCode_in = IF_ID_out[79:71];
+    GRE_array #(.WIDTH(80))
     IF_ID
     (.clk(clk), .rst(reset), .write_enable(IF_ID_write_enable), .flush(IF_ID_flush),
     .in(IF_ID_in), .out(IF_ID_out));
@@ -349,8 +519,8 @@ Dm_Controller dm_controller(
 
     //ID_EX
     wire ID_EX_write_enable = 1;
-    wire ID_EX_flush = stall_signal | Branch_or_Jump | INT_Signal;
-    wire [203:0] ID_EX_in;
+    wire ID_EX_flush = stall_signal | Branch_or_Jump | exc_sig;
+    wire [268:0] ID_EX_in;
     assign ID_EX_in[31:0] = IF_ID_out[31:0];//PC
     assign ID_EX_in[36:32] = rd;
     assign ID_EX_in[41:37] = rs1;
@@ -370,8 +540,16 @@ Dm_Controller dm_controller(
     assign ID_EX_in[170] = ID_EXL_Clear;
     assign ID_EX_in[202:171] = imm4pc;
     assign ID_EX_in[203] = ALUSrc2;
+    assign ID_EX_in[217:204] = csr_num;
+    assign ID_EX_in[218] = csr_mask_en;
+    assign ID_EX_in[219] = csr_write;
+    assign ID_EX_in[251:220] = csr_data;
+    assign ID_EX_in[252]     = ID_exc_req_out;
+    assign ID_EX_in[258:253] = ID_Ecode_out;
+    assign ID_EX_in[267:259] = ID_EsubCode_out;
+    assign ID_EX_in[268]     = ERTN;
     //assign ID_pc = ID_EX_in[31:0]; 
-    wire [203:0] ID_EX_out;
+    wire [268:0] ID_EX_out;
     assign EX_rd = ID_EX_out[36:32];
     assign EX_rs1 = ID_EX_out[41:37];
     assign EX_rs2 = ID_EX_out[46:42];
@@ -389,11 +567,19 @@ Dm_Controller dm_controller(
     //assign EX_pc = ID_EX_out[31:0];
     assign EX_imm4pc = ID_EX_out[202:171];
     assign EX_ALUSrc2 = ID_EX_out[203];
+    assign EX_csr_num = ID_EX_out[217:204];
+    assign EX_csr_mask_en = ID_EX_out[218];
+    assign EX_csr_write = ID_EX_out[219];
+    assign EX_csr_data = ID_EX_out[251:220];
+    assign EX_exc_req_in  = ID_EX_out[252];
+    assign EX_Ecode_in    = ID_EX_out[258:253];
+    assign EX_EsubCode_in = ID_EX_out[267:259];
+    assign EX_ERTN        = ID_EX_out[268];
     
-    assign EX_SCAUSE = {ID_EX_out[169:167], ID_EX_out[166:165] | {BadAddr, IntOverflow}, ID_EX_out[164:162]};
-    assign EXL_Clear = ID_EX_out[170];
+    //assign EX_SCAUSE = {ID_EX_out[169:167], ID_EX_out[166:165] | {BadAddr, IntOverflow}, ID_EX_out[164:162]};
+    //assign EXL_Clear = ID_EX_out[170];
 
-    GRE_array #(.WIDTH(204))
+    GRE_array #(.WIDTH(269))
     ID_EX
     (.clk(clk), .rst(reset), .write_enable(ID_EX_write_enable), .flush(ID_EX_flush),
     .in(ID_EX_in), .out(ID_EX_out));
@@ -402,8 +588,8 @@ Dm_Controller dm_controller(
     
     //EX_MEM
     wire EX_MEM_write_enable = 1;
-    wire EX_MEM_flush = INT_Signal;//warning
-    wire [108:0] EX_MEM_in;
+    wire EX_MEM_flush = exc_sig;//warning
+    wire [171:0] EX_MEM_in;
     assign EX_MEM_in[31:0] = ID_EX_out[31:0];//PC
     assign EX_MEM_in[36:32] = EX_rd;//rd
     assign EX_MEM_in[68:37] = alu_in2;//RD2 updated!!!
@@ -412,10 +598,15 @@ Dm_Controller dm_controller(
     assign EX_MEM_in[102] = EX_MemWrite;
     assign EX_MEM_in[105:103] = EX_DMType;
     assign EX_MEM_in[107:106] = EX_WDSel;
-
     assign EX_MEM_in[108] = EX_MemRead;
+    assign EX_MEM_in[122:109] = EX_csr_num;
+    assign EX_MEM_in[123] = EX_csr_write;
+    assign EX_MEM_in[155:124] = EX_csr_wd;
+    assign EX_MEM_in[156]     = EX_exc_req_out;
+    assign EX_MEM_in[162:157] = EX_Ecode_out;
+    assign EX_MEM_in[171:163] = EX_EsubCode_out;
 
-    wire [108:0] EX_MEM_out;
+    wire [171:0] EX_MEM_out;
     assign MEM_rd = EX_MEM_out[36:32];
     assign MEM_RD2 = EX_MEM_out[68:37];
     assign MEM_aluout = EX_MEM_out[100:69];
@@ -425,7 +616,13 @@ Dm_Controller dm_controller(
     assign MEM_WDSel = EX_MEM_out[107:106];
     wire MEM_MemRead;
     assign MEM_MemRead = EX_MEM_out[108];
-    GRE_array #(.WIDTH(109))
+    assign MEM_csr_num = EX_MEM_out[122:109];
+    assign MEM_csr_write = EX_MEM_out[123];
+    assign MEM_csr_wd = EX_MEM_out[155:124];
+    assign MEM_exc_req_in  = EX_MEM_out[156];
+    assign MEM_Ecode_in    = EX_MEM_out[162:157];
+    assign MEM_EsubCode_in = EX_MEM_out[171:163];
+    GRE_array #(.WIDTH(172))
     EX_MEM
     (.clk(clk), .rst(reset), .write_enable(EX_MEM_write_enable), .flush(EX_MEM_flush),
     .in(EX_MEM_in), .out(EX_MEM_out));
@@ -433,14 +630,14 @@ Dm_Controller dm_controller(
     wire [31:0] MEM_pc;
     gnrl_dff #(32) ex_mem_pc(clk, reset, EX_MEM_write_enable, EX_MEM_flush, EX_pc, MEM_pc);
     
-    assign data_sram_en = EX_MemRead|EX_MemWrite;
+    assign data_sram_en = (EX_MemRead|EX_MemWrite)/* & ~exc_sig*/;
     //assign data_sram_en = EX_MemRead|MEM_MemWrite;
 
 
     //MEM_WB
     wire MEM_WB_write_enable = 1;
-    wire MEM_WB_flush = 0;
-    wire [103:0] MEM_WB_in;
+    wire MEM_WB_flush = exc_sig;
+    wire [150:0] MEM_WB_in;
     assign MEM_WB_in[31:0] = EX_MEM_out[31:0];
     assign MEM_WB_in[36:32] = MEM_rd;
     assign MEM_WB_in[68:37] = MEM_aluout;
@@ -448,14 +645,20 @@ Dm_Controller dm_controller(
     assign MEM_WB_in[100:69] = data_read;
     assign MEM_WB_in[101] = MEM_RegWrite;
     assign MEM_WB_in[103:102] = MEM_WDSel;
-    wire [103:0] MEM_WB_out;
+    assign MEM_WB_in[117:104] = MEM_csr_num;
+    assign MEM_WB_in[118] = MEM_csr_write;
+    assign MEM_WB_in[150:119] = MEM_csr_wd;
+    wire [150:0] MEM_WB_out;
     //assign WB_pc = MEM_WB_out[31:0];
     assign WB_rd = MEM_WB_out[36:32];
     assign WB_aluout = MEM_WB_out[68:37];
     assign WB_MemData = MEM_WB_out[100:69];
     assign WB_RegWrite = MEM_WB_out[101];
     assign WB_WDSel = MEM_WB_out[103:102];
-    GRE_array #(.WIDTH(104))
+    assign WB_csr_num = MEM_WB_out[117:104];
+    assign WB_csr_write = MEM_WB_out[118];
+    assign WB_csr_wd = MEM_WB_out[150:119];
+    GRE_array #(.WIDTH(151))
     MEM_WB
     (.clk(clk), .rst(reset), .write_enable(MEM_WB_write_enable), .flush(MEM_WB_flush),
     .in(MEM_WB_in), .out(MEM_WB_out));

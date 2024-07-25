@@ -60,6 +60,7 @@
 `define ALUOp_modw 5'b11000
 `define ALUOp_divwu 5'b11001
 `define ALUOp_modwu 5'b11010
+`define ALUOp_CSRs 5'b11011
 
 `define dm_word 3'b000
 `define dm_halfword 3'b001

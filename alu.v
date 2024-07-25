@@ -1,10 +1,11 @@
 `include "ctrl_encode_def.v"
 
-module alu(A, B, ALUOp, C, Zero,PC);
+module alu(A, B, ALUOp, C, Zero, PC, csr_data);
            
    input  signed [31:0] A, B;
    input         [4:0]  ALUOp;
    input [31:0] PC;
+   input [31:0] csr_data;
    output signed [31:0] C;
    output Zero;
    
@@ -42,6 +43,7 @@ module alu(A, B, ALUOp, C, Zero,PC);
 `ALUOp_divwu: C = $unsigned(A) / $unsigned(B);
 `ALUOp_modw: C = A % B;
 `ALUOp_modwu: C = $unsigned(A) % $unsigned(B);
+`ALUOp_CSRs: C = csr_data;
 default: C=32'h0;
 
       endcase

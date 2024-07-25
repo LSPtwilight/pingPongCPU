@@ -8,7 +8,10 @@ module ctrl(STATUS,
             EXTOp, ALUOp, NPCOp, imm4alu, imm4pc,
             ALUSrc1, ALUSrc2, GPRSel, WDSel,DMType,
             ID_SCAUSE, EXL_Clear,
-            rdOut, rs1, rs2 // reg 
+            rdOut, rs1, rs2, // reg 
+            csr_num, csr_mask_en, csr_write,//csr
+            ERTN,
+            SYS  // exception signals
             );
             
    input [7:0] STATUS;
@@ -40,6 +43,13 @@ module ctrl(STATUS,
    output [ 4:0] rs1;
    output [ 4:0] rs2;
    output EXL_Clear;
+
+   output [13:0] csr_num;
+   output csr_mask_en;
+   output csr_write;
+
+   output ERTN;
+   output SYS;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 wire [11:0] alu_op;
@@ -106,6 +116,12 @@ wire        inst_div_w;
 wire        inst_mod_w;
 wire        inst_div_wu;
 wire        inst_mod_wu;
+wire        inst_csrrd;
+wire        inst_csrwr;
+wire        inst_csrxchg;
+wire        inst_ertn;
+wire        inst_break;
+wire        inst_syscall;
 
 wire        need_ui5;
 wire        need_si12;
@@ -207,6 +223,23 @@ assign inst_mod_w   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & 
 assign inst_div_wu  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h02];
 assign inst_mod_wu  = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h03];
 
+assign inst_csrrd   = (inst[31:24]==8'h04) & (rj==5'b0);
+assign inst_csrwr   = (inst[31:24]==8'h04) & (rj==5'b1);
+assign inst_csrxchg = (inst[31:24]==8'h04) & !(rj==5'b0) & !(rj==5'b1);
+
+assign csr_num = inst[23:10];
+assign csr_mask_en = inst_csrxchg;
+assign csr_write = inst_csrwr | inst_csrxchg;
+
+assign inst_ertn    = op_31_26_d[6'h01] & op_25_22_d[4'h9] & op_21_20_d[2'h0] & op_19_15_d[5'h10]
+                    & (inst[14:10]==5'h0e);
+assign ERTN = inst_ertn;
+
+assign inst_break   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h14];
+assign inst_syscall = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & op_19_15_d[5'h16];
+
+assign SYS = inst_syscall;
+
 assign MemRead = inst_ld_b | inst_ld_h | inst_ld_w | inst_ld_bu | inst_ld_hu;
 
 /*---------------------------------------------------------*/
@@ -232,7 +265,8 @@ assign imm4pc = need_si26 ? {{ 4{i26[25]}},{i26,2'b00}} :
 
 
 // ctrl
-assign src_reg_is_rd = inst_beq | inst_bne | inst_blt | inst_bltu | inst_bge | inst_bgeu | inst_st_w | inst_st_b |inst_st_h ;
+assign src_reg_is_rd = inst_beq | inst_bne | inst_blt | inst_bltu | inst_bge | inst_bgeu | inst_st_w | inst_st_b |inst_st_h 
+                     | inst_csrwr | inst_csrxchg ;
 
 assign src1_is_pc    = inst_jirl | inst_bl | inst_pcaddu12i ;
 
@@ -392,8 +426,8 @@ assign rkd_value = rf_rdata2;
 // NPC_SEPC_PLUS4 5'b10000
 // NPC_JIRL       5'b11000
 // NPC_B AND BL   5'b00110
-    assign NPCOp[4] = ERETN | inst_jirl;
-    assign NPCOp[3] = ERET | inst_jirl;
+    assign NPCOp[4] = /*ERETN | */inst_jirl;
+    assign NPCOp[3] = /*ERET | */inst_ertn | inst_jirl;
     assign NPCOp[2] = i_jalr | inst_b | inst_bl;
     assign NPCOp[1] = i_jal | inst_b | inst_bl;
     assign NPCOp[0] = inst_beq | inst_bne | inst_bge | inst_blt | inst_bltu | inst_bgeu ; //& Zero;
@@ -426,13 +460,16 @@ assign rkd_value = rf_rdata2;
 // ALUOp_modw 5'b11000
 // ALUOp_divwu 5'b11001
 // ALUOp_modwu 5'b11010
+// ALUOp_CSRs 5'b11011
 
 assign ALUOp[4] = inst_srli_w | inst_srai_w | inst_nor | inst_srl_w | inst_sra_w | inst_beq 
-                | inst_mul_w | inst_mulh_w | inst_mulh_wu | inst_div_w | inst_mod_w | inst_div_wu | inst_mod_wu;
+                | inst_mul_w | inst_mulh_w | inst_mulh_wu | inst_div_w | inst_mod_w | inst_div_wu | inst_mod_wu
+                | inst_csrrd | inst_csrwr | inst_csrxchg;
     
 assign ALUOp[3] = inst_sltu | inst_slt | inst_and | inst_or | inst_xor | inst_slli_w | inst_slti | inst_sltui | inst_andi | inst_ori | inst_xori
                 | inst_sll_w | inst_bltu | inst_bgeu
-                | inst_mod_w | inst_div_wu | inst_mod_wu;
+                | inst_mod_w | inst_div_wu | inst_mod_wu
+                | inst_csrrd | inst_csrwr | inst_csrxchg;
     
 assign ALUOp[2] = inst_sub_w | inst_and | inst_or | inst_xor | inst_slli_w | inst_andi |inst_ori | inst_xori | inst_sll_w | inst_bne | inst_blt
                   | inst_bge
@@ -441,12 +478,14 @@ assign ALUOp[2] = inst_sub_w | inst_and | inst_or | inst_xor | inst_slli_w | ins
 assign ALUOp[1] = inst_add_w | inst_sltu | inst_slt | inst_and | inst_slli_w | inst_addi_w | inst_ld_w | inst_st_w | inst_nor 
                 | inst_jirl | inst_b | inst_bl | inst_slti | inst_sltui | inst_andi | inst_sll_w | inst_pcaddu12i | inst_beq | inst_blt | inst_bge
                 | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu | inst_st_b | inst_st_h
-                | inst_mulh_wu | inst_div_w | inst_mod_wu;
+                | inst_mulh_wu | inst_div_w | inst_mod_wu
+                | inst_csrrd | inst_csrwr | inst_csrxchg;
 	  
 assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w | inst_addi_w | inst_ld_w | inst_st_w 
                 | inst_jirl | inst_b | inst_bl | inst_lu12i_w | inst_sltui | inst_ori | inst_sll_w | inst_sra_w | inst_pcaddu12i | inst_beq | inst_bne | inst_bge
                 | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu | inst_st_b | inst_st_h | inst_bgeu
-                | inst_mulh_w | inst_div_w | inst_div_wu;
+                | inst_mulh_w | inst_div_w | inst_div_wu
+                | inst_csrrd | inst_csrwr | inst_csrxchg;
 	
 //DM_Type: 
 //assign DMType = {2'b0, inst_st_w};

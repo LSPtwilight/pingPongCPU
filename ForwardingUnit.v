@@ -3,12 +3,12 @@
 
 
 
-module ForwardingUnit(
+module ForwardingUnit#(parameter WIDTH = 5) (
     input MEM_RegWrite,// EX/MEM.RegWrite
-    input [4:0] MEM_rd,// EX/MEM.RegisterRd
+    input [WIDTH-1:0] MEM_rd,// EX/MEM.RegisterRd
     input WB_RegWrite,// MEM/WB.RegWrite
-    input [4:0] WB_rd,// MEM/WB.RegisterRd
-    input [4:0] EX_rs,// EX/MEM.RegisterRs1/2
+    input [WIDTH-1:0] WB_rd,// MEM/WB.RegisterRd
+    input [WIDTH-1:0] EX_rs,// EX/MEM.RegisterRs1/2
     output [1:0] ForwardSignal//00: from regfile. 10: from MEM_aluout. 01: from WB_WD
     );
     
