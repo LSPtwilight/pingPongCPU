@@ -235,10 +235,12 @@ always @(posedge clk) reset <= ~resetn;
    
    wire ID_MemWrite;
    wire [2:0] ID_DMType;
+   wire [31:0] ID_pc_;
    
    // instantiation of control unit
 	ctrl U_ctrl(
 	    .STATUS(STATUS),//.reset(reset),
+        .PC(ID_pc_),
         .inst(instr),
 		.Op(7'b0), 
         .Funct7(7'b0), 
@@ -308,7 +310,7 @@ always @(posedge clk) reset <= ~resetn;
         .MEM_csr_wd    (MEM_csr_wd),
         /* external INT signals */
         .HWI_in(8'b0),
-        .TI_in (1'b0),
+        //.TI_in (1'b0),
         .IPI_in(1'b0),
         // CPU states
         //.IE(IE),//output
@@ -319,7 +321,8 @@ always @(posedge clk) reset <= ~resetn;
         .PC        (MEM_pc),//interupted instruction
         .ERTN      (EX_ERTN),
         .EENTRY_out(EENTRY),//output
-        .ERA_out   (ERA)//output
+        .ERA_out   (ERA),//output
+        .INT(INT)
     );
 
     csr_alu U_csr_alu(
@@ -365,13 +368,13 @@ assign data_sram_we = wea_mem & {4{~exc_sig}} & {4{~EX_exc_req_out}};
 //-----Exceptions-----------------
 
 // ADEF
-assign ADEF = 1'b0;//inst_sram_addr[0] | inst_sram_addr[1];
+assign ADEF = inst_sram_addr[0] | inst_sram_addr[1];
 // ALE
-assign ALE = 1'b0;//(EX_MemRead | EX_MemWrite) & (~EX_DMType[2]&~EX_DMType[1]&~EX_DMType[0]&(aluout[0]|aluout[1]) 
-            //| ((~EX_DMType[2]&~EX_DMType[1]& EX_DMType[0] | ~EX_DMType[2]& EX_DMType[1]&~EX_DMType[0]) & aluout[0]));
-
+assign ALE = (EX_MemRead | EX_MemWrite) & (~EX_DMType[2]&~EX_DMType[1]&~EX_DMType[0]&(aluout[0]|aluout[1]) 
+            | ((~EX_DMType[2]&~EX_DMType[1]& EX_DMType[0] | ~EX_DMType[2]& EX_DMType[1]&~EX_DMType[0]) & aluout[0]));
+//assign INE = 1'b0;
 // IF
-assign INT = 1'b0; // for testing
+//assign INT = 1'b0; // for testing
 assign IF_exc_req_in  = INT;
 assign IF_Ecode_in    = 6'b0;
 assign IF_EsubCode_in = 9'b0;
@@ -459,7 +462,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     wire branch_b_and_bl = (EX_NPCOp==`NPC_BANDBL);
     wire branch_bxx = ((EX_NPCOp==`NPC_BRANCH)&&Zero);
     wire branch_jirl = (EX_NPCOp==`NPC_JIRL);
-    wire Branch_or_Jump = branch_b_and_bl|branch_bxx|branch_jirl;
+    wire Branch_or_Jump = branch_b_and_bl|branch_bxx|branch_jirl | EX_ERTN;
 
 //-----HazardDetectionUnit--------
 
@@ -505,9 +508,9 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     always @(*)
     begin
         case(ForwardCSR2ALU)
-            2'b00: alu_csr_data <= EX_csr_data;// from regfile
-            2'b10: alu_csr_data <= MEM_csr_wd; // from MEM
-            2'b01: alu_csr_data <= WB_csr_wd;  // from WB
+            2'b00: alu_csr_data <= csr_num != `TICLR ? EX_csr_data : 32'b0;// from regfile
+            2'b10: alu_csr_data <= csr_num != `TICLR ? MEM_csr_wd : 32'b0; // from MEM
+            2'b01: alu_csr_data <= csr_num != `TICLR ? WB_csr_wd : 32'b0;  // from WB
         endcase
     end
 
@@ -540,7 +543,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     wire [79:0] IF_ID_out;
     //assign instr = IF_ID_out[63:32];
     assign instr = IF_ID_out[63:32];
-    //assign ID_pc = IF_ID_out[31:0];
+    assign ID_pc_ = IF_ID_out[31:0];
     assign ID_exc_req_in  = IF_ID_out[64];
     assign ID_Ecode_in    = IF_ID_out[70:65];
     assign ID_EsubCode_in = IF_ID_out[79:71];

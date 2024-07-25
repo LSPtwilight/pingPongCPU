@@ -41,6 +41,10 @@
 `define PPLV 1:0
 `define PIE  2
 
+// ECFG
+`define LIE1 9:0
+`define LIE2 12:11
+
 // ESTAT
 `define SW       1:0
 `define HWI      9:2
@@ -48,6 +52,14 @@
 `define IPI      12
 `define Ecode    21:16
 `define EsubCode 30:22
+
+//TIMER
+`define TIMER_WIDTH   24
+
+// TCFG
+`define En       0
+`define Periodic 1
+`define InitVal  (`TIMER_WIDTH-1):2
 
 `define Ecode_INT     6'h0
 `define EsubCode_INT   9'b0

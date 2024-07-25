@@ -2,7 +2,7 @@
 
 //123
 module ctrl(STATUS,
-            inst,
+            PC, inst,
             Op, Funct7, Funct3, Zero, 
             RegWrite, MemWrite, MemRead,
             EXTOp, ALUOp, NPCOp, imm4alu, imm4pc,
@@ -17,6 +17,7 @@ module ctrl(STATUS,
    input [7:0] STATUS;
   
    input [31:0] inst;
+   input [31:0] PC;
    output [31:0] imm4alu;
    output [31:0] imm4pc;
 
@@ -111,6 +112,25 @@ wire        inst_bl;
 wire        inst_beq;
 wire        inst_bne;
 wire        inst_lu12i_w;
+wire        inst_slti;
+wire        inst_sltui;
+wire        inst_andi;
+wire        inst_ori;
+wire        inst_xori;
+wire        inst_sll_w;
+wire        inst_srl_w;
+wire        inst_sra_w;
+wire        inst_pcaddu12i;
+wire        inst_st_b;
+wire        inst_st_h;
+wire        inst_ld_b;
+wire        inst_ld_h;
+wire        inst_ld_hu;
+wire        inst_ld_bu;
+wire        inst_blt;
+wire        inst_bge;
+wire        inst_bltu;
+wire        inst_bgeu;
 wire        inst_mul_w;
 wire        inst_mulh_w;
 wire        inst_mulh_wu;
@@ -507,8 +527,8 @@ assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w |
 
 
     assign INE = ~
-    (
-             inst_add_w
+    (        (PC == 32'b0) // reset
+    |        inst_add_w
     |        inst_sub_w
     |        inst_slt
     |        inst_sltu
@@ -528,6 +548,25 @@ assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w |
     |        inst_beq
     |        inst_bne
     |        inst_lu12i_w
+    |        inst_slti
+    |        inst_sltui
+    |        inst_andi
+    |        inst_ori
+    |        inst_xori
+    |        inst_sll_w
+    |        inst_srl_w
+    |        inst_sra_w
+    |        inst_pcaddu12i
+    |        inst_st_b
+    |        inst_st_h
+    |        inst_ld_b
+    |        inst_ld_h
+    |        inst_ld_hu
+    |        inst_ld_bu
+    |        inst_blt
+    |        inst_bge
+    |        inst_bltu
+    |        inst_bgeu
     |        inst_mul_w
     |        inst_mulh_w
     |        inst_mulh_wu
