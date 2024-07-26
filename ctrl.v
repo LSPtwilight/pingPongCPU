@@ -61,6 +61,7 @@ wire        src1_is_pc;
 wire        src2_is_imm;
 wire        res_from_mem;
 wire        dst_is_r1;
+wire        dst_is_rj;
 wire        gr_we;
 wire        mem_we;
 wire        src_reg_is_rd;
@@ -144,6 +145,9 @@ wire        inst_csrxchg;
 wire        inst_ertn;
 wire        inst_break;
 wire        inst_syscall;
+wire        inst_rdcntid_w;
+wire        inst_rdcntvl_w;
+wire        inst_rdcntvh_w;
 
 wire        need_ui5;
 wire        need_si12;
@@ -249,7 +253,10 @@ assign inst_csrrd   = (inst[31:24]==8'h04) & (rj==5'b0);
 assign inst_csrwr   = (inst[31:24]==8'h04) & (rj==5'b1);
 assign inst_csrxchg = (inst[31:24]==8'h04) & !(rj==5'b0) & !(rj==5'b1);
 
-assign csr_num = inst[23:10];
+assign csr_num = inst_rdcntid_w ? `TID   :
+                 inst_rdcntvl_w ? `CNTVL :
+                 inst_rdcntvh_w ? `CNTVH :
+                              inst[23:10];
 assign csr_mask_en = inst_csrxchg;
 assign csr_write = inst_csrwr | inst_csrxchg;
 
@@ -262,6 +269,13 @@ assign inst_break   = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h2] & 
 
 assign SYS = inst_syscall;
 assign BRK = inst_break;
+
+assign inst_rdcntid_w = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & op_19_15_d[5'h00]
+                      & rk==5'h18 & rd==5'h00;
+assign inst_rdcntvl_w = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & op_19_15_d[5'h00]
+                      & rk==5'h18 & rj==5'h00;
+assign inst_rdcntvh_w = op_31_26_d[6'h00] & op_25_22_d[4'h0] & op_21_20_d[2'h0] & op_19_15_d[5'h00]
+                      & rk==5'h19 & rj==5'h00;
 
 assign MemRead = inst_ld_b | inst_ld_h | inst_ld_w | inst_ld_bu | inst_ld_hu;
 
@@ -311,9 +325,12 @@ assign src2_is_imm   = inst_slli_w    |
 
 assign res_from_mem  = inst_ld_w | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu ;
 assign dst_is_r1     = inst_bl;
+assign dst_is_rj     = inst_rdcntid_w;
 assign gr_we         = (~inst_st_w & ~inst_st_b & ~inst_st_h & ~inst_beq & ~inst_bne & ~inst_b & ~inst_blt & ~inst_bltu & ~inst_bge & ~inst_bgeu);
 assign mem_we        = inst_st_w | inst_st_b | inst_st_h ;
-assign dest          = dst_is_r1 ? 5'd1 : rd;
+assign dest          = dst_is_r1 ? 5'd1 :
+                       dst_is_rj ? rj   :
+                                   rd;
 
 assign rf_raddr1 = rj;
 assign rf_raddr2 = src_reg_is_rd ? rd :rk;
@@ -487,12 +504,14 @@ assign rkd_value = rf_rdata2;
 
 assign ALUOp[4] = inst_srli_w | inst_srai_w | inst_nor | inst_srl_w | inst_sra_w | inst_beq 
                 | inst_mul_w | inst_mulh_w | inst_mulh_wu | inst_div_w | inst_mod_w | inst_div_wu | inst_mod_wu
-                | inst_csrrd | inst_csrwr | inst_csrxchg;
+                | inst_csrrd | inst_csrwr | inst_csrxchg
+                | inst_rdcntid_w | inst_rdcntvl_w | inst_rdcntvh_w;
     
 assign ALUOp[3] = inst_sltu | inst_slt | inst_and | inst_or | inst_xor | inst_slli_w | inst_slti | inst_sltui | inst_andi | inst_ori | inst_xori
                 | inst_sll_w | inst_bltu | inst_bgeu
                 | inst_mod_w | inst_div_wu | inst_mod_wu
-                | inst_csrrd | inst_csrwr | inst_csrxchg;
+                | inst_csrrd | inst_csrwr | inst_csrxchg
+                | inst_rdcntid_w | inst_rdcntvl_w | inst_rdcntvh_w;
     
 assign ALUOp[2] = inst_sub_w | inst_and | inst_or | inst_xor | inst_slli_w | inst_andi |inst_ori | inst_xori | inst_sll_w | inst_bne | inst_blt
                   | inst_bge
@@ -502,13 +521,15 @@ assign ALUOp[1] = inst_add_w | inst_sltu | inst_slt | inst_and | inst_slli_w | i
                 | inst_jirl | inst_b | inst_bl | inst_slti | inst_sltui | inst_andi | inst_sll_w | inst_pcaddu12i | inst_beq | inst_blt | inst_bge
                 | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu | inst_st_b | inst_st_h
                 | inst_mulh_wu | inst_div_w | inst_mod_wu
-                | inst_csrrd | inst_csrwr | inst_csrxchg;
+                | inst_csrrd | inst_csrwr | inst_csrxchg
+                | inst_rdcntid_w | inst_rdcntvl_w | inst_rdcntvh_w;
 	  
 assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w | inst_addi_w | inst_ld_w | inst_st_w 
                 | inst_jirl | inst_b | inst_bl | inst_lu12i_w | inst_sltui | inst_ori | inst_sll_w | inst_sra_w | inst_pcaddu12i | inst_beq | inst_bne | inst_bge
                 | inst_ld_h | inst_ld_hu | inst_ld_b | inst_ld_bu | inst_st_b | inst_st_h | inst_bgeu
                 | inst_mulh_w | inst_div_w | inst_div_wu
-                | inst_csrrd | inst_csrwr | inst_csrxchg;
+                | inst_csrrd | inst_csrwr | inst_csrxchg
+                | inst_rdcntid_w | inst_rdcntvl_w | inst_rdcntvh_w;
 	
 //DM_Type: 
 //assign DMType = {2'b0, inst_st_w};
@@ -580,6 +601,9 @@ assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w |
     |        inst_ertn
     |        inst_break
     |        inst_syscall
+    |        inst_rdcntid_w
+    |        inst_rdcntvl_w
+    |        inst_rdcntvh_w
     );
     
     /*wire UNDEFINED = ~(syscall | break | ERET | ERETN | LUI | AUIPC | i_add  | i_sub | i_or | i_and | i_xor | i_sll | i_slt | i_sltu | i_srl | i_sra |

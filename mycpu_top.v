@@ -318,6 +318,7 @@ always @(posedge clk) reset <= ~resetn;
         .exc_sig   (exc_sig),
         .Ecode     (MEM_Ecode_out),
         .EsubCode  (MEM_EsubCode_out),
+        .MEM_aluout(MEM_aluout), // for BADV
         .PC        (MEM_pc),//interupted instruction
         .ERTN      (EX_ERTN),
         .EENTRY_out(EENTRY),//output
@@ -368,13 +369,12 @@ assign data_sram_we = wea_mem & {4{~exc_sig}} & {4{~EX_exc_req_out}};
 //-----Exceptions-----------------
 
 // ADEF
-assign ADEF = inst_sram_addr[0] | inst_sram_addr[1];
+assign ADEF = pc[0] | pc[1];
 // ALE
 assign ALE = (EX_MemRead | EX_MemWrite) & (~EX_DMType[2]&~EX_DMType[1]&~EX_DMType[0]&(aluout[0]|aluout[1]) 
             | ((~EX_DMType[2]&~EX_DMType[1]& EX_DMType[0] | ~EX_DMType[2]& EX_DMType[1]&~EX_DMType[0]) & aluout[0]));
-//assign INE = 1'b0;
+
 // IF
-//assign INT = 1'b0; // for testing
 assign IF_exc_req_in  = INT;
 assign IF_Ecode_in    = 6'b0;
 assign IF_EsubCode_in = 9'b0;
@@ -419,43 +419,6 @@ assign MEM_EsubCode_out = MEM_exc_req_in==1'b1 ? MEM_EsubCode_in:
                          //...
 
 assign exc_sig = MEM_exc_req_out/* & IE*/;
-
-/*
-    ExceptionCtrl exception_ctrl(
-    .STATUS(STATUS),
-    .EX_SCAUSE(EX_SCAUSE),
-    //.INTMASK(SW),//
-    .INTMASK(8'b0),
-    .EXL_Set(EXL_Set),
-    .INT_Signal(INT_Signal),
-    .INT_PEND(INT_PEND)
-    );
-
-    always@(posedge clk, posedge reset)
-    begin
-        if(reset)
-        begin
-        SEPC <= 32'b0;
-        STATUS <= 8'h02;//��ȫ���ж�
-        INTMASK <= 8'hFF;
-        end
-        else begin
-        STATUS[0] <= (STATUS[0] | EXL_Set) & ~EXL_Clear;
-        if(INT_Signal) begin SEPC <= EX_pc; end
-        end
-    end
-    
-    // dm_word 3'b000
-// dm_halfword 3'b001
-// dm_halfword_unsigned 3'b010
-// dm_byte 3'b011
-// dm_byte_unsigned 3'b100
-    wire BadAddr = (EX_MemRead | EX_MemWrite) & (~EX_DMType[2]&~EX_DMType[1]&~EX_DMType[0]&(aluout[0]|aluout[1]) 
-                   | ((~EX_DMType[2]&~EX_DMType[1]& EX_DMType[0] | ~EX_DMType[2]& EX_DMType[1]&~EX_DMType[0]) & aluout[0]));
-   // ALUOp_add 5'b00011
-   // ALUOp_sub 5'b00100
-    wire IntOverflow = ~EX_ALUOp[4]&~EX_ALUOp[3]&~EX_ALUOp[2]& EX_ALUOp[1]& EX_ALUOp[0] & ( A[31]&B[31]&~aluout[31] | ~A[31]&~B[31]&aluout[31]);
-*/
 
 //-----Branch or Jump-------------
 
@@ -508,9 +471,12 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     always @(*)
     begin
         case(ForwardCSR2ALU)
-            2'b00: alu_csr_data <= csr_num != `TICLR ? EX_csr_data : 32'b0;// from regfile
+            /*2'b00: alu_csr_data <= csr_num != `TICLR ? EX_csr_data : 32'b0;// from regfile
             2'b10: alu_csr_data <= csr_num != `TICLR ? MEM_csr_wd : 32'b0; // from MEM
-            2'b01: alu_csr_data <= csr_num != `TICLR ? WB_csr_wd : 32'b0;  // from WB
+            2'b01: alu_csr_data <= csr_num != `TICLR ? WB_csr_wd : 32'b0;  // from WB*/
+            2'b00: alu_csr_data <= EX_csr_data;// from regfile
+            2'b10: alu_csr_data <= MEM_csr_wd; // from MEM
+            2'b01: alu_csr_data <= WB_csr_wd;  // from WB
         endcase
     end
 
@@ -529,7 +495,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
 //-----pipe registers--------------
 
     //IF_ID: [31:0]PC [31:0]instr
-    wire IF_ID_write_enable = ~stall_signal;
+    wire IF_ID_write_enable = ~stall_signal | exc_sig | Branch_or_Jump/*?*/;
     wire IF_ID_flush = Branch_or_Jump | exc_sig;
     wire [79:0] IF_ID_in;
     assign IF_ID_in[31:0] = pc;//?????????????????????

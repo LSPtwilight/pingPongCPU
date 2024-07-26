@@ -20,6 +20,7 @@ module CSR(    input         clk,
                input         exc_sig,
                input  [5: 0] Ecode,
                input  [8: 0] EsubCode,
+               input  [31:0] MEM_aluout,
                input  [31:0] PC,
                input         ERTN,
                output [31:0] EENTRY_out,
@@ -47,10 +48,15 @@ module CSR(    input         clk,
 
   // simple built-in timer
   reg [`TIMER_WIDTH-1:0] timer;
+  reg [1:0] TIMER_EN_R;
+  // stable counter
+  reg [63:0] counter;
 
   always @(posedge clk, posedge rst)begin
     if (rst) begin    //  reset
-        timer <= `TIMER_WIDTH'b1;
+        timer      <= `TIMER_WIDTH'b1;
+        TIMER_EN_R <= 2'b0;
+        counter    <= 64'b0;
         CRMD  <= 32'h8; // DA = 1
         //EUEN[FPUen] <= 0;
         ECFG[`LIE1] <= 10'b0;
@@ -60,18 +66,30 @@ module CSR(    input         clk,
         //LLBCTL[KLO] <= 0;
     end
     else begin
+      // counter
+      counter <= counter + 1;
       // timer
-      if(TCFG[`En]==1'b1)
-        timer <= timer - 1;
-      if(timer==`TIMER_WIDTH'b0 && TCFG[`En]==1'b1)begin
-        ESTAT[`TI] <= 1;
-        if(TCFG[`Periodic]==1'b1)begin
-          timer <= {TCFG[`InitVal], 2'b0};
-        end
-        else begin
-          timer <= `TIMER_WIDTH'b1; //??
-          TCFG[`En] <= 1'b0;
-        end
+      TIMER_EN_R <= {TIMER_EN_R[0], TCFG[`En]};
+      if(TCFG[`En]==1'b1)begin
+        if(timer==`TIMER_WIDTH'b0)
+          begin
+            ESTAT[`TI] <= 1;
+            if(TCFG[`Periodic]==1'b1)
+              begin
+                timer <= {TCFG[`InitVal], 2'b0};
+              end
+            else
+              begin
+                //timer <= `TIMER_WIDTH'b1; //??
+                //timer <= {TCFG[`InitVal], 2'b0};
+                TCFG[`En] <= 1'b0;
+              end
+          end
+        else
+          if (TIMER_EN_R == 2'b01)
+            timer <= {TCFG[`InitVal], 2'b0};
+          else
+            timer <= timer - 1;
       end
       // sample the external interuption signals
       ESTAT[`HWI] <= HWI_in;
@@ -110,6 +128,10 @@ module CSR(    input         clk,
       // trigger exceptions
       // jump in MEM
       else if (exc_sig /*& IE*/) begin
+        case(Ecode)
+          `Ecode_ADEF: if(EsubCode == `EsubCode_ADEF) BADV <= PC;
+          `Ecode_ALE : BADV <= MEM_aluout;
+        endcase
         PRMD[`PPLV] <= (csr_write==1'b1 && write_addr==`CRMD) ? WD[`PLV] : CRMD[`PLV]; // WB to MEM
         PRMD[`PIE ] <= (csr_write==1'b1 && write_addr==`CRMD) ? WD[`IE ] : CRMD[`IE ]; // WB to MEM
         CRMD[`PLV ] <= 0;
@@ -141,6 +163,8 @@ module CSR(    input         clk,
         `TCFG:   RD <= {{(32-`TIMER_WIDTH){1'b0}}, TCFG[(`TIMER_WIDTH-1): 0]};
         `TVAL:   RD <= {{(32-`TIMER_WIDTH){1'b0}}, timer};
         `TICLR:  RD <= 32'b0;
+        `CNTVL:  RD <= counter[31: 0];
+        `CNTVH:  RD <= counter[63:32];
         default: RD <= 32'b0;
     endcase
   end

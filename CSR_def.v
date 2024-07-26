@@ -29,6 +29,10 @@
 `define DMW0      14'h180
 `define DMW1      14'h181
 
+// counter
+`define CNTVL     14'h101
+`define CNTVH     14'h102
+
 // CRMD
 `define PLV  1:0
 `define IE   2
@@ -54,7 +58,7 @@
 `define EsubCode 30:22
 
 //TIMER
-`define TIMER_WIDTH   24
+`define TIMER_WIDTH   18
 
 // TCFG
 `define En       0
