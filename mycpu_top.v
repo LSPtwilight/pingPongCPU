@@ -553,7 +553,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     
 
     //ID_EX
-    wire ID_EX_write_enable = ~div_busy;
+    wire ID_EX_write_enable = ~div_busy | Branch_or_Jump | exc_sig;
     wire ID_EX_flush = stall_signal | Branch_or_Jump | exc_sig;
     wire [268:0] ID_EX_in;
     assign ID_EX_in[31:0] = IF_ID_out[31:0];//PC
