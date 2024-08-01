@@ -1,18 +1,20 @@
 `include "ctrl_encode_def.v"
 
-module alu(A, B, ALUOp, C, Zero, PC, csr_data);
+module alu(A, B, ALUOp, C, Zero, PC, csr_data, div_result);
            
    input  signed [31:0] A, B;
    input         [4:0]  ALUOp;
    input [31:0] PC;
    input [31:0] csr_data;
+   input [63:0] div_result;
    output signed [31:0] C;
    output Zero;
    
    reg [31:0] C;
-   integer    i;
+   //integer    i;
    
-   reg [63:0] product;
+   wire [63:0] product = A*B;
+   wire [63:0] product_u = $unsigned(A) * $unsigned(B);
 
    always @( * ) begin
       case ( ALUOp )
@@ -36,15 +38,15 @@ module alu(A, B, ALUOp, C, Zero, PC, csr_data);
 `ALUOp_sra:C=A>>>B;
 `ALUOp_nor:C=~(A|B);
 `ALUOp_beq:C={31'b0,(A!=B)};
-`ALUOp_mulw:begin product = A * B; C = product[31:0]; end
-`ALUOp_mulhw:begin product = A * B; C = product[63:32]; end
-`ALUOp_mulhwu:begin product = $unsigned(A) * $unsigned(B); C = product[63:32]; end
-`ALUOp_divw: C = A / B;
-`ALUOp_divwu: C = $unsigned(A) / $unsigned(B);
-`ALUOp_modw: C = A % B;
-`ALUOp_modwu: C = $unsigned(A) % $unsigned(B);
-`ALUOp_CSRs: C = csr_data;
-default: C=32'h0;
+`ALUOp_mulw:C <= product[31:0];
+`ALUOp_mulhw:C <= product[63:32];
+`ALUOp_mulhwu:C <= product_u[63:32];
+`ALUOp_divw: C  <= div_result[31: 0];
+`ALUOp_divwu: C <= div_result[31: 0];
+`ALUOp_modw: C  <= div_result[63:32];
+`ALUOp_modwu: C <= div_result[63:32];
+`ALUOp_CSRs: C <= csr_data;
+default: C<=32'h0;
 
       endcase
    end // end always
