@@ -24,6 +24,8 @@ module mycpu_top(
     output wire        data_sram_en
 );
 
+wire [31:0] NPC;         // next PC
+
 assign inst_sram_we    = 1'b0;
 assign inst_sram_en     = 1'b1;
 assign inst_sram_wdata = 32'h0;
@@ -45,7 +47,6 @@ always @(posedge clk) reset <= ~resetn;
     wire        Zero;        // ALU ouput zero
     wire        [2:0] DM_type;
     wire [31:0] pc;    
-    wire [31:0] NPC;         // next PC
 
 
     wire [4:0]  rs1;          // rs
@@ -171,6 +172,7 @@ always @(posedge clk) reset <= ~resetn;
     wire EX_csr_mask_en;
     wire EX_csr_write;
     wire [31:0] EX_csr_wd;
+    wire Branch_or_Jump;
 	
 	//MEM wires
 	wire [4:0] MEM_rd;
@@ -455,7 +457,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     wire branch_b_and_bl = (EX_NPCOp==`NPC_BANDBL);
     wire branch_bxx = ((EX_NPCOp==`NPC_BRANCH)&&Zero);
     wire branch_jirl = (EX_NPCOp==`NPC_JIRL);
-    wire Branch_or_Jump = branch_b_and_bl|branch_bxx|branch_jirl | EX_ERTN;
+    assign Branch_or_Jump = branch_b_and_bl|branch_bxx|branch_jirl | EX_ERTN;
 
 //-----HazardDetectionUnit--------
 
@@ -525,7 +527,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
 //-----pipe registers--------------
 
     //IF_ID: [31:0]PC [31:0]instr
-    wire IF_ID_write_enable = ~stall_signal | exc_sig | Branch_or_Jump/*?*/ | ~div_busy;
+    wire IF_ID_write_enable = ~(stall_signal | div_busy) | exc_sig | Branch_or_Jump/*?*/;
     wire IF_ID_flush = Branch_or_Jump | exc_sig;
     wire [79:0] IF_ID_in;
     assign IF_ID_in[31:0] = pc;//?????????????????????
@@ -553,7 +555,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     
 
     //ID_EX
-    wire ID_EX_write_enable = ~div_busy | Branch_or_Jump | exc_sig;
+    wire ID_EX_write_enable = ~div_busy | Branch_or_Jump | exc_sig | stall_signal;
     wire ID_EX_flush = stall_signal | Branch_or_Jump | exc_sig;
     wire [268:0] ID_EX_in;
     assign ID_EX_in[31:0] = IF_ID_out[31:0];//PC

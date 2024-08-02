@@ -25,7 +25,10 @@ module div(
 	reg 	[31:0] 	divisor;
 	reg 	[5:0] 	cnt;
 	reg 	[1:0] 	state;
-	
+
+	reg     sign_1;
+	reg     sign_2;
+
 	assign div_temp = {1'b0, dividend[63:32]} - {1'b0, divisor};
 
 	always @ (posedge clk) begin
@@ -44,6 +47,8 @@ module div(
 		  				cnt <= 6'b000000;
 		  				dividend[63:33] <= 31'b0;
 		  				dividend[0] <= 1'b0;
+						sign_1 <= opdata1_i[31];
+						sign_2 <= opdata2_i[31];
 		  				if (signed_div_i == 1'b1 && opdata1_i[31] == 1'b1 ) begin
 		  					dividend[32:1] <= ~opdata1_i + 1;
 		  				end else begin
@@ -74,10 +79,10 @@ module div(
                         end
                     	cnt <= cnt + 1;
                     end else begin
-                        if ((signed_div_i == 1'b1) && ((opdata1_i[31] ^ opdata2_i[31]) == 1'b1)) begin
+                        if ((signed_div_i == 1'b1) && ((/*opdata1_i[31] ^ opdata2_i[31]*/sign_1 ^ sign_2) == 1'b1)) begin
                             dividend[31:0] <= (~dividend[31:0] + 1);
                         end
-                        if ((signed_div_i == 1'b1) && ((opdata1_i[31] ^ dividend[64]) == 1'b1)) begin              
+                        if ((signed_div_i == 1'b1) && ((/*opdata1_i[31]*/sign_1 ^ dividend[64]) == 1'b1)) begin              
                             dividend[64:33] <= (~dividend[64:33] + 1);
                         end
                     	state <= `DivEnd;
