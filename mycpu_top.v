@@ -66,6 +66,7 @@ module mycpu_top(
     output wire        data_sram_en
 );
 
+wire [31:0] NPC;         // next PC
 
 wire        inst_sram_we        ;
 wire [31:0] inst_sram_addr      ;
@@ -77,7 +78,7 @@ reg inst_sram_en_req;
 assign inst_sram_we    = 1'b0;
 assign inst_sram_en    = inst_sram_en_req;
 assign inst_sram_wdata = 32'h0;
-assign inst_sram_addr=NPC;
+assign inst_sram_addr  = NPC;
 
 wire clk = aclk;
 
@@ -88,7 +89,25 @@ wire [31:0] data_sram_addr      ;
 wire [31:0] data_sram_wdata     ;
 wire [31:0] data_sram_rdata     ;
 
-wire wr_data = |data_sram_we;
+// data cache wires
+wire data_cache_valid; // to be assign
+wire data_cache_op;    // to be assign
+wire D_addr_ok;
+wire D_data_ok;
+
+wire wait_data_addr;   // to be assign
+wire wait_data_back;   // to be assign 
+
+// inst cache wires;
+//wire inst_cache_valid;
+//wire inst_cache_op;
+wire I_addr_ok;
+wire I_data_ok;
+
+wire wait_inst_addr = 1'b1 & ~I_addr_ok;// to be assign 
+wire wait_inst_back = 1'b1 & ~I_data_ok;// to be assign 
+
+/*wire wr_data = |data_sram_we;
 wire wr_inst = |inst_sram_we;
 
 reg [2:0] size_data;
@@ -98,10 +117,42 @@ wire data_ok_inst;
 wire addr_ok_data;
 wire addr_ok_inst;
 
-wire req_inst_success;
+wire req_inst_success;*/
+
+// with AXI data cache
+wire         rd_req_data;
+wire [ 2: 0] rd_type_data; // 3'b100 cache line
+wire [31: 0] rd_addr_data;
+wire         rd_rdy_data;
+wire         ret_valid_data;
+wire         ret_last_data;
+wire [31: 0] ret_data_data;
+
+wire         wr_req_data;  
+wire [ 2: 0] wr_type_data; // 3'b100 cache line
+wire [31: 0] wr_addr_data; 
+wire [ 3: 0] wr_wstrb_data;
+wire [127:0] wr_data_data; 
+wire         wr_rdy_data;
+
+    // with AXI inst cache
+wire         rd_req_inst;
+wire [ 2: 0] rd_type_inst;
+wire [31: 0] rd_addr_inst;
+wire         rd_rdy_inst;
+wire         ret_valid_inst;
+wire         ret_last_inst;
+wire [31: 0] ret_data_inst;
+
+wire         wr_req_inst;  // 1'b0
+wire [ 2: 0] wr_type_inst; // 3'b100 cache line
+wire [31: 0] wr_addr_inst; 
+wire [ 3: 0] wr_wstrb_inst;// 4'b0000
+wire [127:0] wr_data_inst; // ignore
+wire         wr_rdy_inst;
 
 
-sram2axi my_sram2axi(
+cache2axi u_cache2axi(
 .clk(clk),
 .resetn(aresetn),
 //axi接口
@@ -142,28 +193,103 @@ sram2axi my_sram2axi(
 .bvalid  (bvalid ),
 .bready  (bready ),
 
-//类sram接口
-.req_data                        ( data_sram_en ),
-.wr_data                         ( wr_data ),
-.size_data                       ( size_data ),
-.addr_data                       ( data_sram_addr ),
-.wstrb_data                      ( data_sram_we ),
-.wdata_data                      ( data_sram_wdata ),
-.addr_ok_data                    ( addr_ok_data ),
-.data_ok_data                    ( data_ok_data ),
-.rdata_data                      ( data_sram_rdata ),
+// with AXI data cache
+.rd_req_data    (rd_req_data   ),
+.rd_type_data   (rd_type_data  ), // 3'b100 cache line
+.rd_addr_data   (rd_addr_data  ),
+.rd_rdy_data    (rd_rdy_data   ),
+.ret_valid_data (ret_valid_data),
+.ret_last_data  (ret_last_data ),
+.ret_data_data  (ret_data_data ),
 
-.req_inst                        ( inst_sram_en ),
-.wr_inst                         ( wr_inst ),
-.size_inst                       ( size_inst ),
-.addr_inst                       ( inst_sram_addr ),
-.wstrb_inst                      ( 4'b0 ),
-.wdata_inst                      ( inst_sram_wdata ),
-.addr_ok_inst                    ( addr_ok_inst ),
-.data_ok_inst                    ( data_ok_inst ),
-.rdata_inst                      ( inst_sram_rdata )
+.wr_req_data   (wr_req_data  ),  
+.wr_type_data  (wr_type_data ), // 3'b100 cache line
+.wr_addr_data  (wr_addr_data ), 
+.wr_wstrb_data (wr_wstrb_data),
+.wr_data_data  (wr_data_data ), 
+.wr_rdy_data   (wr_rdy_data  ),
 
+    // with AXI inst cache
+.rd_req_inst    (rd_req_inst   ),
+.rd_type_inst   (rd_type_inst  ),
+.rd_addr_inst   (rd_addr_inst  ),
+.rd_rdy_inst    (rd_rdy_inst   ),
+.ret_valid_inst (ret_valid_inst),
+.ret_last_inst  (ret_last_inst ),
+.ret_data_inst  (ret_data_inst ),
 
+.wr_req_inst   (wr_req_inst  ),  // 1'b0
+.wr_type_inst  (wr_type_inst ), // 3'b100 cache line
+.wr_addr_inst  (wr_addr_inst ), 
+.wr_wstrb_inst (wr_wstrb_inst),// 4'b0000
+.wr_data_inst  (wr_data_inst ), // ignore
+.wr_rdy_inst   (wr_rdy_inst  )
+
+);
+
+cache data_cache(
+.clk(clk),
+.resetn(~reset),
+    // with CPU
+.valid  (data_cache_valid),
+.op     (data_cache_op),    // 1'b1 WRITE, 1'b0 READ
+.index  (data_sram_addr[11: 4]), // addr [11:4]
+.tag    (data_sram_addr[31:12]),
+.offset (data_sram_addr[ 3: 0]),
+.wstrb  (data_sram_we),
+.wdata  (data_sram_wdata),
+
+.addr_ok(D_addr_ok),
+.data_ok(D_data_ok),
+.rdata  (data_sram_rdata),
+
+    // with AXI
+.rd_req(rd_req_data),
+.rd_type(rd_type_data),
+.rd_addr(rd_addr_data),
+.rd_rdy(rd_rdy_data),
+.ret_valid(ret_valid_data),
+.ret_last(ret_last_data),
+.ret_data(ret_data_data),
+
+.wr_req(wr_req_data),
+.wr_type(wr_type_data),
+.wr_addr(wr_addr_data),
+.wr_wstrb(wr_wstrb_data),
+.wr_data(wr_data_data),
+.wr_rdy(wr_rdy_data)
+);
+
+cache inst_cache(.clk(clk),
+.resetn(~reset),
+    // with CPU
+.valid  (1b'1),
+.op     (1'b0),    // 1'b1 WRITE, 1'b0 READ
+.index  (inst_sram_addr[11: 4]), // addr [11:4]
+.tag    (inst_sram_addr[31:12]),
+.offset (inst_sram_addr[ 3: 0]),
+.wstrb  (4'b0),
+.wdata  (32'b0),
+
+.addr_ok(I_addr_ok),
+.data_ok(I_data_ok),
+.rdata  (inst_sram_rdata),
+
+    // with AXI
+.rd_req(rd_req_inst),
+.rd_type(rd_type_inst),
+.rd_addr(rd_addr_inst),
+.rd_rdy(rd_rdy_inst),
+.ret_valid(ret_valid_inst),
+.ret_last(ret_last_inst),
+.ret_data(ret_data_inst),
+
+.wr_req(wr_req_inst),
+.wr_type(wr_type_inst),
+.wr_addr(wr_addr_inst),
+.wr_wstrb(wr_wstrb_inst),
+.wr_data(wr_data_inst),
+.wr_rdy(wr_rdy_inst)
 );
 
 
@@ -185,7 +311,6 @@ assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
     wire        Zero;        // ALU ouput zero
     wire        [2:0] DM_type;
     wire [31:0] pc;    
-    wire [31:0] NPC;         // next PC
 
 
     wire [4:0]  rs1;          // rs
@@ -419,7 +544,7 @@ assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
 	NPC U_NPC(.PC(pc), .EX_pc(EX_pc), .ID_pc(EX_pc), .SEPC(ERA), .NPCOp(EX_NPCOp),
 	           .exc_sig(exc_sig), .EENTRY(EENTRY), .IMM(EX_imm4pc/*?*/), .NPC(NPC), .EX_RD1(EX_RD1), 
                .branch_flag(Zero), .stall_signal(stall_signal),
-               .req_inst_success(req_inst_success));
+               .req_inst_success(1'b0));
 
 	EXT U_EXT(
 		.iimm_shamt(iimm_shamt), .iimm(iimm), .simm(simm), .bimm(bimm),
@@ -662,8 +787,8 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
 //-----pipe registers--------------
 
     //IF_ID: [31:0]PC [31:0]instr
-    wire IF_ID_write_enable = ~stall_signal | exc_sig | Branch_or_Jump/*?*/;
-    wire IF_ID_flush = Branch_or_Jump | exc_sig;
+    wire IF_ID_write_enable = ~stall_signal | exc_sig | Branch_or_Jump/*?*/ | wait_inst_back;
+    wire IF_ID_flush = Branch_or_Jump | exc_sig | wait_inst_back;
     wire [79:0] IF_ID_in;
     assign IF_ID_in[31:0] = pc;//?????????????????????
     assign IF_ID_in[63:32] = inst_sram_rdata;

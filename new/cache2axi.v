@@ -1,4 +1,4 @@
-module sram2axi (
+module cache2axi (
 
     input     wire      clk,
     input     wire      resetn,
@@ -47,6 +47,7 @@ module sram2axi (
     output    wire                 bready  ,
 
     // 类sram接口
+    /*
     input   wire             req_data                    ,
     input   wire              wr_data                    ,
     input   wire [1:0]      size_data                    ,
@@ -56,7 +57,39 @@ module sram2axi (
     output  wire         addr_ok_data                    ,
     output  wire         data_ok_data                    ,
     output  wire [31:0]    rdata_data                    ,
+    */
+    // with AXI data cache
+    input  wire         rd_req_data,
+    input  wire [ 2: 0] rd_type_data, // 3'b100 cache line
+    input  wire [31: 0] rd_addr_data,
+    output wire         rd_rdy_data,
+    output wire         ret_valid_data,
+    output wire         ret_last_data,
+    output wire [31: 0] ret_data_data,
 
+    input  wire         wr_req_data,  
+    input  wire [ 2: 0] wr_type_data, // 3'b100 cache line
+    input  wire [31: 0] wr_addr_data, 
+    input  wire [ 3: 0] wr_wstrb_data,
+    input  wire [127:0] wr_data_data, 
+    output wire         wr_rdy_data,
+
+    // with AXI inst cache
+    input  wire         rd_req_inst,
+    input  wire [ 2: 0] rd_type_inst,
+    input  wire [31: 0] rd_addr_inst,
+    output wire         rd_rdy_inst,
+    output wire         ret_valid_inst,
+    output wire         ret_last_inst,
+    output wire [31: 0] ret_data_inst,
+
+    input  wire         wr_req_inst,  // 1'b0
+    input  wire [ 2: 0] wr_type_inst, // 3'b100 cache line
+    input  wire [31: 0] wr_addr_inst, 
+    input  wire [ 3: 0] wr_wstrb_inst,// 4'b0000
+    input  wire [127:0] wr_data_inst, // ignore
+    output wire         wr_rdy_inst
+/*
     input   wire             req_inst                    ,
     input   wire              wr_inst                    ,
     input   wire [1:0]      size_inst                    ,
@@ -65,101 +98,68 @@ module sram2axi (
     input   wire [31:0]    wdata_inst                    ,
     output  wire         addr_ok_inst                    ,
     output  wire         data_ok_inst                    ,
-    output  wire [31:0]    rdata_inst                    
+    output  wire [31:0]    rdata_inst                    */
 
 );
 
-reg doing_req               ;
-reg doing_req_or            ;//req is inst or data;1:data,0:inst
-reg        doing_wr_r       ;
-reg [1 :0] doing_size_r     ;
-reg [31:0] doing_addr_r     ;
-reg [31:0] doing_wdata_r    ;
-wire data_back              ;
-
-assign addr_ok_inst = !doing_req&&!req_data&&resetn;
-assign addr_ok_data = !doing_req&&resetn;
-
+reg [127:0] write_buffer;
+reg [1:0] cnt;
 
 always@(posedge clk)begin
-    doing_req <=    !resetn                             ? 1'b0 :
-                    (req_data||req_inst)&&(!doing_req)  ? 1'b1 :
-                    data_back                           ? 1'b0 :
-                    doing_req                                  ;
-    doing_req_or <= !resetn     ? 1'b0 : 
-                    !doing_req  ? req_data : doing_req_or;
-    doing_wr_r    <=    (req_data&&addr_ok_data) ? wr_data   :
-                        (req_inst&&addr_ok_inst) ? wr_inst   : 
-                        //cache_rreq               ? 1'b0      :
-                        doing_req ? doing_wr_r : 1'b0;
-    doing_size_r  <=    (req_data&&addr_ok_data) ? size_data :
-                        //cache_rreq               ? cache_rtype:
-                        (req_inst&&addr_ok_inst) ? size_inst : doing_size_r;
-    doing_addr_r  <=    (req_data&&addr_ok_data) ? addr_data :
-                        //cache_rreq               ? cache_raddr:
-                        (req_inst&&addr_ok_inst) ? addr_inst : doing_addr_r;
-    doing_wdata_r <=    (req_data&&addr_ok_data) ? wdata_data :
-                        //cache_rreq               ? 1'b0       :
-                        (req_inst&&addr_ok_inst) ? wdata_inst : 
-                        doing_req ? doing_wdata_r : 32'b0;
-end
-
-assign data_ok_inst = doing_req &&(!doing_req_or)&& data_back;
-assign data_ok_data = doing_req &&  doing_req_or && data_back;
-assign rdata_inst   = rdata;
-assign rdata_data   = rdata;
-
-
-//axi<-->类sram
-reg addr_receive;
-reg wdata_receive;
-
-assign data_back = addr_receive && (rvalid&&rready||bvalid&&bready);
-always @(posedge clk)
-begin
-    addr_receive  <= !resetn            ? 1'b0 :
-                 arvalid&&arready       ? 1'b1 :
-                 awvalid&&awready       ? 1'b1 :
-                 data_back              ? 1'b0 : addr_receive;
-    wdata_receive <= !resetn            ? 1'b0 :
-                 wvalid&&wready         ? 1'b1 :
-                 data_back              ? 1'b0 : wdata_receive;
+    cnt <= !resetn        ? 2'b00 :
+           wvalid&&wready ? cnt+1 : cnt;
+    write_buffer <= !resetn          ? 128'b0 :
+                    awvalid&&awready ? wr_data_data : write_buffer;
 end
 
 //ar
 assign arid    = 4'd0;
-assign araddr  = doing_addr_r;
-assign arlen   = 8'd0;
-assign arsize  = doing_size_r;
-assign arburst = 2'd0;
+assign araddr  = rd_req_data ? rd_addr_data : rd_addr_inst;
+assign arlen   = 8'd3;   // 3+1 //8'd0;
+assign arsize  = 3'b010; // 4 bytes per transfer
+assign arburst = 2'b01;  // INCR transaction
 assign arlock  = 2'd0;
 assign arcache = 4'd0;
 assign arprot  = 3'd0;
-assign arvalid = doing_req && (!doing_wr_r) && (!addr_receive);
+assign arvalid = rd_req_data | rd_req_inst;//doing_req && (!doing_wr_r) && (!addr_receive);
 //r
 //assign rready  = cache_rreq ? cache_rready : 1'b1;
 assign rready = 1'b1;
 
 //aw
 assign awid    = 4'd0;
-assign awaddr  = doing_addr_r;
-assign awlen   = 8'd0;
-assign awsize  = doing_size_r;
-assign awburst = 2'd0;
+assign awaddr  = wr_addr_data;
+assign awlen   = 8'd3; // 3+1 //8'd0;
+assign awsize  = 3'b010;
+assign awburst = 2'b01; // INCR transaction
 assign awlock  = 2'd0;
 assign awcache = 4'd0;
 assign awprot  = 3'd0;
-assign awvalid = doing_req && doing_wr_r && (!addr_receive);
+assign awvalid = wr_req_data;
 //w
 assign wid    = 4'd0;
-assign wdata  = doing_wdata_r;
-assign wstrb  = (doing_size_r==2'd0) ? 4'b0001<<doing_addr_r[1:0] :
-                (doing_size_r==2'd1) ? 4'b0011<<doing_addr_r[1:0] : 4'b1111;
-assign wlast  = 1'd1;
-assign wvalid = doing_req && doing_wr_r && (!wdata_receive);
+assign wdata  = write_buffer[cnt * 32 +: 32];
+assign wstrb  = 4'b1111;
+assign wlast  = cnt==2'b11;//1'd1;
+assign wvalid = 1'b1;
 //b
 assign bready = 1'b1;
 
+// with cache
+// data
+assign rd_rdy_data    = arready;
+assign ret_valid_data = rvalid;
+assign ret_last_data  = rlast;
+assign ret_data_data  = rdata;
+
+assign wr_rdy_data    = awready;
+//inst
+assign rd_rdy_inst    = arready & !rd_req_data;
+assign ret_valid_inst = rvalid;
+assign ret_last_inst  = rlast;
+assign ret_data_inst  = rdata;
+
+assign wr_rdy_inst    = 1'b1;
 
 
 endmodule

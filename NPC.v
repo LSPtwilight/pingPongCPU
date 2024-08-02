@@ -33,7 +33,7 @@ module NPC(PC, EX_pc, ID_pc, SEPC, NPCOp, exc_sig, EENTRY, IMM, NPC,EX_RD1, bran
         else if(stall_signal) begin
             NPC <= PC;
         end
-        else if(req_inst_success) begin
+        else /*if(req_inst_success)*/ begin
             case (NPCOp)
             `NPC_PLUS4:       NPC = PCPLUS4;
             `NPC_BRANCH:      NPC = branch_flag? (EX_pc+IMM):PCPLUS4;
