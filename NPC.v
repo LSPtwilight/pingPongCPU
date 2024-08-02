@@ -1,6 +1,6 @@
 `include "ctrl_encode_def.v"
 
-module NPC(PC, EX_pc, ID_pc, SEPC, NPCOp, exc_sig, EENTRY, IMM, NPC,EX_RD1, branch_flag, stall_signal);  // next pc module
+module NPC(PC, EX_pc, ID_pc, SEPC, NPCOp, exc_sig, EENTRY, IMM, NPC,EX_RD1, branch_flag, stall_signal, req_inst_success);  // next pc module
     
    input  [31:0] PC;        // pc
    input  [31:0] EX_pc;
@@ -14,6 +14,7 @@ module NPC(PC, EX_pc, ID_pc, SEPC, NPCOp, exc_sig, EENTRY, IMM, NPC,EX_RD1, bran
 	input [31:0] EX_RD1;
     input branch_flag;
     input stall_signal;
+    input req_inst_success;
    output reg [31:0] NPC;   // next pc
    
    wire [31:0] PCPLUS4;
@@ -32,7 +33,7 @@ module NPC(PC, EX_pc, ID_pc, SEPC, NPCOp, exc_sig, EENTRY, IMM, NPC,EX_RD1, bran
         else if(stall_signal) begin
             NPC <= PC;
         end
-        else begin
+        else if(req_inst_success) begin
             case (NPCOp)
             `NPC_PLUS4:       NPC = PCPLUS4;
             `NPC_BRANCH:      NPC = branch_flag? (EX_pc+IMM):PCPLUS4;
@@ -45,6 +46,9 @@ module NPC(PC, EX_pc, ID_pc, SEPC, NPCOp, exc_sig, EENTRY, IMM, NPC,EX_RD1, bran
             `NPC_BANDBL:      NPC = EX_pc+IMM;
             default:     NPC = PCPLUS4;
             endcase
+        end
+        else begin
+            NPC <= PC;
         end
     end // end always
    

@@ -2,18 +2,60 @@
 `include "CSR_def.v"
 
 module mycpu_top(
-    input  wire        clk,
-    input  wire        resetn,
+    input  wire        aclk,
+    input  wire        aresetn,
     // inst sram interface
-    output wire        inst_sram_we,
-    output wire [31:0] inst_sram_addr,
-    output wire [31:0] inst_sram_wdata,
-    input  wire [31:0] inst_sram_rdata,
+    //output wire        inst_sram_we,
+    //output wire [31:0] inst_sram_addr,
+    //output wire [31:0] inst_sram_wdata,
+    //input  wire [31:0] inst_sram_rdata,
     // data sram interface
-    output wire [ 3:0] data_sram_we,
-    output wire [31:0] data_sram_addr,
-    output wire [31:0] data_sram_wdata,
-    input  wire [31:0] data_sram_rdata,
+    //output wire [ 3:0] data_sram_we,
+    //output wire [31:0] data_sram_addr,
+    //output wire [31:0] data_sram_wdata,
+    //input  wire [31:0] data_sram_rdata,
+
+    output    wire    [ 3 : 0 ]    arid    ,
+    output    wire    [ 31: 0 ]    araddr  ,
+    output    wire    [ 7 : 0 ]    arlen   ,
+    output    wire    [ 2 : 0 ]    arsize  ,
+    output    wire    [ 1 : 0 ]    arburst ,
+    output    wire    [ 1 : 0 ]    arlock  ,
+    output    wire    [ 3 : 0 ]    arcache ,
+    output    wire    [ 2 : 0 ]    arprot  ,
+    output    wire                 arvalid ,
+    input     wire                 arready ,
+               
+    input     wire    [ 3 : 0 ]    rid     ,
+    input     wire    [ 31: 0 ]    rdata   ,
+    input     wire    [ 1 : 0 ]    rresp   ,
+    input     wire                 rlast   ,
+    input     wire                 rvalid  ,
+    output    wire                 rready  ,
+               
+    output    wire    [ 3 : 0 ]    awid    ,
+    output    wire    [ 31: 0 ]    awaddr  ,
+    output    wire    [ 7 : 0 ]    awlen   ,
+    output    wire    [ 2 : 0 ]    awsize  ,
+    output    wire    [ 1 : 0 ]    awburst ,
+    output    wire    [ 1 : 0 ]    awlock  ,
+    output    wire    [ 3 : 0 ]    awcache ,
+    output    wire    [ 2 : 0 ]    awprot  ,
+    output    wire                 awvalid ,
+    input     wire                 awready ,
+    
+    output    wire    [ 3 : 0 ]    wid     ,
+    output    wire    [ 31: 0 ]    wdata   ,
+    output    wire    [ 1 : 0 ]    wstrb   ,
+    output    wire                 wlast   ,
+    output    wire                 wvalid  ,
+    input     wire                 wready  ,
+    
+    input     wire    [ 3 : 0 ]     bid     ,
+    input     wire    [ 1 : 0 ]     bresp   ,
+    input     wire                  bvalid  ,
+    output    wire                  bready  ,
+
     // trace debug interface
     output wire [31:0] debug_wb_pc,
     output wire [ 3:0] debug_wb_rf_we,
@@ -26,13 +68,111 @@ module mycpu_top(
 
 wire [31:0] NPC;         // next PC
 
+
+wire        inst_sram_we        ;
+wire [31:0] inst_sram_addr      ;
+wire [31:0] inst_sram_wdata     ;
+wire [31:0] inst_sram_rdata     ;
+
+reg inst_sram_en_req;
+
 assign inst_sram_we    = 1'b0;
-assign inst_sram_en     = 1'b1;
+assign inst_sram_en    = inst_sram_en_req;
 assign inst_sram_wdata = 32'h0;
 assign inst_sram_addr=NPC;
 
+wire clk = aclk;
+
+
+
+wire [ 3:0] data_sram_we        ;
+wire [31:0] data_sram_addr      ;
+wire [31:0] data_sram_wdata     ;
+wire [31:0] data_sram_rdata     ;
+
+wire wr_data = |data_sram_we;
+wire wr_inst = |inst_sram_we;
+
+reg [2:0] size_data;
+wire [2:0] size_inst;
+wire data_ok_data;
+wire data_ok_inst;
+wire addr_ok_data;
+wire addr_ok_inst;
+
+wire req_inst_success;
+
+
+sram2axi my_sram2axi(
+.clk(clk),
+.resetn(aresetn),
+//axi接口
+.arid    (arid   ),
+.araddr  (araddr ),
+.arlen   (arlen  ),
+.arsize  (arsize ),
+.arburst (arburst),
+.arlock  (arlock ),
+.arcache (arcache),
+.arprot  (arprot ),
+.arvalid (arvalid),
+.arready (arready),
+.rid     (rid    ),
+.rdata   (rdata  ),
+.rresp   (rresp  ),
+.rlast   (rlast  ),
+.rvalid  (rvalid ),
+.rready  (rready ),
+.awid    (awid   ),
+.awaddr  (awaddr ),
+.awlen   (awlen  ),
+.awsize  (awsize ),
+.awburst (awburst),
+.awlock  (awlock ),
+.awcache (awcache),
+.awprot  (awprot ),
+.awvalid (awvalid),
+.awready (awready),
+.wid     (wid    ),
+.wdata   (wdata  ),
+.wstrb   (wstrb  ),
+.wlast   (wlast  ),
+.wvalid  (wvalid ),
+.wready  (wready ),
+.bid     (bid    ),
+.bresp   (bresp  ),
+.bvalid  (bvalid ),
+.bready  (bready ),
+
+//类sram接口
+.req_data                        ( data_sram_en ),
+.wr_data                         ( wr_data ),
+.size_data                       ( size_data ),
+.addr_data                       ( data_sram_addr ),
+.wstrb_data                      ( data_sram_we ),
+.wdata_data                      ( data_sram_wdata ),
+.addr_ok_data                    ( addr_ok_data ),
+.data_ok_data                    ( data_ok_data ),
+.rdata_data                      ( data_sram_rdata ),
+
+.req_inst                        ( inst_sram_en ),
+.wr_inst                         ( wr_inst ),
+.size_inst                       ( size_inst ),
+.addr_inst                       ( inst_sram_addr ),
+.wstrb_inst                      ( 4'b0 ),
+.wdata_inst                      ( inst_sram_wdata ),
+.addr_ok_inst                    ( addr_ok_inst ),
+.data_ok_inst                    ( data_ok_inst ),
+.rdata_inst                      ( inst_sram_rdata )
+
+
+);
+
+
 reg         reset;
-always @(posedge clk) reset <= ~resetn;
+always @(posedge clk) reset <= ~aresetn;
+
+assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
 
     wire        RegWrite;    // control signal to register write
     wire [5:0]  EXTOp;       // control signal to signed extension
@@ -293,8 +433,9 @@ always @(posedge clk) reset <= ~resetn;
 	//           .INT_Signal(INT_Signal), .INT_PEND(INT_PEND), .IMM(immout/*?*/), .NPC(NPC), .aluout(aluout));
 
 	NPC U_NPC(.PC(pc), .EX_pc(EX_pc), .ID_pc(EX_pc), .SEPC(ERA), .NPCOp(EX_NPCOp),
-	           .exc_sig(exc_sig), .EENTRY(EENTRY), .IMM(EX_imm4pc/*?*/), .NPC(NPC), 
-               .EX_RD1(EX_RD1), .branch_flag(Zero), .stall_signal(stall_signal | div_busy | mul_busy));
+	           .exc_sig(exc_sig), .EENTRY(EENTRY), .IMM(EX_imm4pc/*?*/), .NPC(NPC), .EX_RD1(EX_RD1), 
+               .branch_flag(Zero), .stall_signal(stall_signal | div_busy | mul_busy),
+               .req_inst_success(req_inst_success));
 
 	EXT U_EXT(
 		.iimm_shamt(iimm_shamt), .iimm(iimm), .simm(simm), .bimm(bimm),
@@ -420,6 +561,31 @@ Dm_Controller dm_controller(
   );
 
 assign data_sram_we = wea_mem & {4{~exc_sig}} & {4{~EX_exc_req_out}};
+
+//ex阶段给出地址、使能的同时也给出size，在ex-mem上升沿握手
+always@(*) begin
+    case(EX_DMType)
+        `dm_word:               size_data = 3'd2;
+        `dm_halfword:           size_data = 3'd1;
+        `dm_halfword_unsigned:  size_data = 3'd1;
+        `dm_byte:               size_data = 3'd0;
+        `dm_byte_unsigned:      size_data = 3'd0;
+        default:                size_data = 3'd0;
+    endcase
+end
+
+assign size_inst = 3'd2;
+
+//generate req_inst according to current situation
+always@(posedge clk) begin
+    if(!reset)                  inst_sram_en_req <= 1'b0;
+    else if(IF_ID_flush)        inst_sram_en_req <= 1'b0;
+    //else if(req_inst_success)   inst_sram_en_req <= 1'b0;
+    else if(addr_ok_inst)       inst_sram_en_req <= 1'b1;
+    else                        inst_sram_en_req <= 1'b0;
+end
+
+
 
 //-----Exceptions-----------------
 
