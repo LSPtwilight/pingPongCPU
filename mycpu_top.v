@@ -354,6 +354,20 @@ assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
 	wire EXL_Set;
 	wire INT_Signal;*/
 
+    // divs
+    wire signed_div;
+    wire div_start;
+    wire div_ready;
+    wire div_busy;
+    wire [63:0] div_result;
+
+    // muls
+    wire signed_mul;
+    wire mul_start;
+    wire mul_ready;
+    wire mul_busy;
+    wire [63:0] mul_result;
+
     // exceptions
     wire        exc_sig;
     /*--exception request signals--*/
@@ -429,6 +443,7 @@ assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
     wire EX_csr_mask_en;
     wire EX_csr_write;
     wire [31:0] EX_csr_wd;
+    wire Branch_or_Jump;
 	
 	//MEM wires
 	wire [4:0] MEM_rd;
@@ -543,7 +558,7 @@ assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
 
 	NPC U_NPC(.PC(pc), .EX_pc(EX_pc), .ID_pc(EX_pc), .SEPC(ERA), .NPCOp(EX_NPCOp),
 	           .exc_sig(exc_sig), .EENTRY(EENTRY), .IMM(EX_imm4pc/*?*/), .NPC(NPC), .EX_RD1(EX_RD1), 
-               .branch_flag(Zero), .stall_signal(stall_signal),
+               .branch_flag(Zero), .stall_signal(stall_signal | div_busy | mul_busy),
                .req_inst_success(1'b0));
 
 	EXT U_EXT(
@@ -603,7 +618,45 @@ assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
         .csr_wd(EX_csr_wd)
     );
 // instantiation of alu unit
-	alu U_alu(.A(A), .B(B), .ALUOp(EX_ALUOp), .C(aluout), .Zero(Zero), .PC(EX_pc), .csr_data(alu_csr_data));
+	alu U_alu(.A(A), .B(B), .ALUOp(EX_ALUOp), .C(aluout), .Zero(Zero), .PC(EX_pc), 
+        .csr_data(alu_csr_data), .div_result(div_result), .mul_result(mul_result));
+
+// div module
+    div u_div(.clk(clk), .resetn(~reset),
+	
+	.opdata1_i   (alu_in1   ),
+	.opdata2_i   (alu_in2   ),
+	.signed_div_i(signed_div),
+	.start_i     (div_start ),
+	.annul_i     (exc_sig | Branch_or_Jump),	// cancel division, seems never happen
+	
+	.result_o    (div_result),
+	.ready_o     (div_ready )
+    );
+    
+    assign signed_div = EX_ALUOp==`ALUOp_divw || EX_ALUOp==`ALUOp_modw;
+    assign div_start = EX_ALUOp == `ALUOp_divw
+                    || EX_ALUOp == `ALUOp_modw
+                    || EX_ALUOp == `ALUOp_divwu
+                    || EX_ALUOp == `ALUOp_modwu;
+    assign div_busy = div_start & ~div_ready;
+
+// mul module
+    mul u_mul(.clk(clk), .resetn(~reset),
+	
+	.opdata1_i   (alu_in1),
+	.opdata2_i   (alu_in2),
+	.signed_mul_i(signed_mul),
+	.start_i     (mul_start),
+	.annul_i     (exc_sig | Branch_or_Jump),	// cancel division
+	
+	.result_o    (mul_result),
+	.ready_o     (mul_ready)
+    );
+
+    assign signed_mul = EX_ALUOp==`ALUOp_mulw || EX_ALUOp==`ALUOp_mulhw;
+    assign mul_start  = EX_ALUOp==`ALUOp_mulhw|| EX_ALUOp==`ALUOp_mulhwu || EX_ALUOp==`ALUOp_mulw;
+    assign mul_busy   = mul_start & ~mul_ready;
 	
 //please connnect the CPU by yourself
 
@@ -717,7 +770,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     wire branch_b_and_bl = (EX_NPCOp==`NPC_BANDBL);
     wire branch_bxx = ((EX_NPCOp==`NPC_BRANCH)&&Zero);
     wire branch_jirl = (EX_NPCOp==`NPC_JIRL);
-    wire Branch_or_Jump = branch_b_and_bl|branch_bxx|branch_jirl | EX_ERTN;
+    assign Branch_or_Jump = branch_b_and_bl|branch_bxx|branch_jirl | EX_ERTN;
 
 //-----HazardDetectionUnit--------
 
@@ -787,7 +840,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
 //-----pipe registers--------------
 
     //IF_ID: [31:0]PC [31:0]instr
-    wire IF_ID_write_enable = ~stall_signal | exc_sig | Branch_or_Jump/*?*/ | wait_inst_back;
+    wire IF_ID_write_enable = ~(stall_signal | div_busy | mul_busy) | exc_sig | Branch_or_Jump/*?*/ | wait_inst_back;
     wire IF_ID_flush = Branch_or_Jump | exc_sig | wait_inst_back;
     wire [79:0] IF_ID_in;
     assign IF_ID_in[31:0] = pc;//?????????????????????
@@ -815,7 +868,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     
 
     //ID_EX
-    wire ID_EX_write_enable = 1;
+    wire ID_EX_write_enable = ~(div_busy | mul_busy) | Branch_or_Jump | exc_sig | stall_signal;
     wire ID_EX_flush = stall_signal | Branch_or_Jump | exc_sig;
     wire [268:0] ID_EX_in;
     assign ID_EX_in[31:0] = IF_ID_out[31:0];//PC
@@ -885,7 +938,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     
     //EX_MEM
     wire EX_MEM_write_enable = 1;
-    wire EX_MEM_flush = exc_sig;//warning
+    wire EX_MEM_flush = exc_sig | div_busy | mul_busy;//warning
     wire [171:0] EX_MEM_in;
     assign EX_MEM_in[31:0] = ID_EX_out[31:0];//PC
     assign EX_MEM_in[36:32] = EX_rd;//rd

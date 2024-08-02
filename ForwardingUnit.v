@@ -13,9 +13,9 @@ module ForwardingUnit#(parameter WIDTH = 5) (
     );
     
     wire MEM_Forward;
-    assign MEM_Forward = ~(|(MEM_rd ^ EX_rs)) & MEM_RegWrite;
+    assign MEM_Forward = ~(|(MEM_rd ^ EX_rs)) & MEM_RegWrite;//MEM_rd==EX_rs && MEM_RegWrite==1'b1;//~(|(MEM_rd ^ EX_rs)) & MEM_RegWrite;
     wire WB_Forward;
-    assign WB_Forward = ~(|(WB_rd ^ EX_rs)) & WB_RegWrite & ~MEM_Forward;
+    assign WB_Forward = ~(|(WB_rd ^ EX_rs)) & WB_RegWrite & ~MEM_Forward;//WB_rd==EX_rs && WB_RegWrite==1'b1 && MEM_Forward==1'b0;//~(|(WB_rd ^ EX_rs)) & WB_RegWrite & ~MEM_Forward;
     assign ForwardSignal = {MEM_Forward, WB_Forward};
     
 endmodule
