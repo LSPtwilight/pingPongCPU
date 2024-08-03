@@ -47,9 +47,9 @@ module NPC(PC, EX_pc, ID_pc, SEPC, NPCOp, exc_sig, EENTRY, IMM, NPC,EX_RD1, bran
             default:     NPC = PCPLUS4;
             endcase
         end
-        else begin
+        /*else begin
             NPC <= PC;
-        end
+        end*/
     end // end always
    
 endmodule

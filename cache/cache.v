@@ -68,6 +68,10 @@ reg         refill_way;
 reg [ 3: 0] refill_wstrb;
 reg [31: 0] refill_wdata;*/
 /*-----------------------------*/
+
+reg [2:0] state;
+reg       w_state;
+
 wire [127:0] way0_data;
 wire [127:0] way1_data;
 
@@ -83,8 +87,8 @@ wire way0_hit  = way0_v && (way0_tag==reg_tag);
 wire way1_hit  = way1_v && (way1_tag==reg_tag);
 wire cache_hit = way0_hit | way1_hit;
 
-wire [31:0] way0_load_word = way0_data[offset[3:2]*32 +: 32];
-wire [31:0] way1_load_word = way1_data[offset[3:2]*32 +: 32];
+wire [31:0] way0_load_word = way0_data[reg_offset[3:2]*32 +: 32];
+wire [31:0] way1_load_word = way1_data[reg_offset[3:2]*32 +: 32];
 wire [31:0] load_res       = {32{way0_hit}} & way0_load_word
                            | {32{way1_hit}} & way1_load_word
                            | {32{state == `REFILL && ret_valid==1'b1 && rd_cnt == reg_offset[3:2] && reg_op==`READ}} & ret_data;
@@ -137,8 +141,6 @@ wire       way1_d_in;
 wire       way1_d_out;
 
 /*--------------------------------*/
-reg [2:0] state;
-reg       w_state;
 
 wire      hit_write_conflict;
 

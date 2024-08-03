@@ -1,8 +1,9 @@
-module PC( clk, rst, NPC, PC );
+module PC( clk, rst, NPC, PC, write, flush);
 
   input              clk;
   input              rst;
-  //input              write;
+  input              write;
+  input              flush;
   input       [31:0] NPC;
   output reg  [31:0] PC;
 
@@ -12,10 +13,14 @@ module PC( clk, rst, NPC, PC );
     if (rst) 
 //      PC <= 32'h0000_0000;
       PC <= 32'h1c000000;
+      //PC <= 32'h1BFFFFFC;
     else
     begin
-        //if(write) begin PC <= NPC; end
-        PC <= NPC;
+        if(write) begin 
+          if(flush) begin PC <= 32'b0; end
+          else begin PC <= NPC; end
+        end
+        //PC <= NPC;
     end
   end
   

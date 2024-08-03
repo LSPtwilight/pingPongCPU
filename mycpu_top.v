@@ -65,7 +65,7 @@ module mycpu_top(
     output wire        inst_sram_en,
     output wire        data_sram_en
 );
-
+reg         reset;
 wire [31:0] NPC;         // next PC
 
 wire        inst_sram_we        ;
@@ -263,7 +263,7 @@ cache data_cache(
 cache inst_cache(.clk(clk),
 .resetn(~reset),
     // with CPU
-.valid  (1b'1),
+.valid  (1'b1),
 .op     (1'b0),    // 1'b1 WRITE, 1'b0 READ
 .index  (inst_sram_addr[11: 4]), // addr [11:4]
 .tag    (inst_sram_addr[31:12]),
@@ -292,11 +292,9 @@ cache inst_cache(.clk(clk),
 .wr_rdy(wr_rdy_inst)
 );
 
-
-reg         reset;
 always @(posedge clk) reset <= ~aresetn;
 
-assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
+//assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
 
     wire        RegWrite;    // control signal to register write
     wire [5:0]  EXTOp;       // control signal to signed extension
@@ -552,13 +550,25 @@ assign req_inst_success = (!inst_sram_en_req)&&(addr_ok_inst)&&(!reset);
 	);
  // instantiation of pc unit
 	//PC U_PC(.clk(clk), .rst(reset), .write(~stall_signal), .NPC(NPC), .PC(pc) );
-    PC U_PC(.clk(clk), .rst(reset), .NPC(NPC), .PC(pc) );
+    PC U_PC(.clk(clk), .rst(reset), .NPC(NPC), .PC(pc) ,
+    .write(//1'b1
+        /*~(stall_signal | div_busy | mul_busy 
+        | wait_inst_back | wait_data_back | wait_data_addr
+        ) // stalls
+        |*/ I_addr_ok
+            //| wait_inst_addr
+    ),
+    .flush(1'b0)
+    );
 	//NPC U_NPC(.PC(pc), .EX_pc(EX_pc), .ID_pc(ID_pc), .SEPC(SEPC), .NPCOp(NPCOp),
 	//           .INT_Signal(INT_Signal), .INT_PEND(INT_PEND), .IMM(immout/*?*/), .NPC(NPC), .aluout(aluout));
 
 	NPC U_NPC(.PC(pc), .EX_pc(EX_pc), .ID_pc(EX_pc), .SEPC(ERA), .NPCOp(EX_NPCOp),
 	           .exc_sig(exc_sig), .EENTRY(EENTRY), .IMM(EX_imm4pc/*?*/), .NPC(NPC), .EX_RD1(EX_RD1), 
-               .branch_flag(Zero), .stall_signal(stall_signal | div_busy | mul_busy),
+               .branch_flag(Zero), 
+               .stall_signal(//1'b0
+               stall_signal | div_busy | mul_busy 
+               /*| wait_inst_addr*/ | wait_inst_back | wait_data_addr | wait_data_back),
                .req_inst_success(1'b0));
 
 	EXT U_EXT(
@@ -685,8 +695,8 @@ Dm_Controller dm_controller(
   );
 
 assign data_sram_we = wea_mem & {4{~exc_sig}} & {4{~EX_exc_req_out}};
-
-//ex阶段给出地址、使能的同时也给出size，在ex-mem上升沿握手
+/*
+//ex阶段给出地址、使能的同时也给出size，在ex-mem上升沿握�???
 always@(*) begin
     case(EX_DMType)
         `dm_word:               size_data = 3'd2;
@@ -698,16 +708,16 @@ always@(*) begin
     endcase
 end
 
-assign size_inst = 3'd2;
+assign size_inst = 3'd2;*/
 
 //generate req_inst according to current situation
-always@(posedge clk) begin
+/*always@(posedge clk) begin
     if(!reset)                  inst_sram_en_req <= 1'b0;
     else if(IF_ID_flush)        inst_sram_en_req <= 1'b0;
     //else if(req_inst_success)   inst_sram_en_req <= 1'b0;
     else if(addr_ok_inst)       inst_sram_en_req <= 1'b1;
     else                        inst_sram_en_req <= 1'b0;
-end
+end*/
 
 
 
@@ -839,8 +849,12 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
 
 //-----pipe registers--------------
 
+    assign wait_data_addr = (EX_MemRead  | EX_MemWrite      ) & ~D_addr_ok;
+    assign wait_data_back = (MEM_MemRead | MEM_MemWrite/*?*/) & ~D_data_ok;
+
     //IF_ID: [31:0]PC [31:0]instr
-    wire IF_ID_write_enable = ~(stall_signal | div_busy | mul_busy) | exc_sig | Branch_or_Jump/*?*/ | wait_inst_back;
+    wire IF_ID_write_enable = ~(stall_signal | div_busy | mul_busy | wait_data_addr | wait_data_back) 
+                            | exc_sig | Branch_or_Jump/*?*/ | wait_inst_back;
     wire IF_ID_flush = Branch_or_Jump | exc_sig | wait_inst_back;
     wire [79:0] IF_ID_in;
     assign IF_ID_in[31:0] = pc;//?????????????????????
@@ -866,9 +880,10 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     gnrl_dff #(32) if_id_pc(clk, reset, IF_ID_write_enable, IF_ID_flush, pc, ID_pc);
     
     
-
+    wire ID_EX_stall = Branch_or_Jump & ~I_addr_ok | div_busy | mul_busy | wait_data_addr | wait_data_back;
     //ID_EX
-    wire ID_EX_write_enable = ~(div_busy | mul_busy) | Branch_or_Jump | exc_sig | stall_signal;
+    wire ID_EX_write_enable = ~(ID_EX_stall/*div_busy | mul_busy | wait_data_addr | wait_data_back*/) 
+                            /*| Branch_or_Jump */| exc_sig | stall_signal;
     wire ID_EX_flush = stall_signal | Branch_or_Jump | exc_sig;
     wire [268:0] ID_EX_in;
     assign ID_EX_in[31:0] = IF_ID_out[31:0];//PC
@@ -937,8 +952,10 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     gnrl_dff #(32) id_ex_pc(clk, reset, ID_EX_write_enable, ID_EX_flush, ID_pc, EX_pc);
     
     //EX_MEM
-    wire EX_MEM_write_enable = 1;
-    wire EX_MEM_flush = exc_sig | div_busy | mul_busy;//warning
+    wire EX_MEM_write_enable = ~(wait_data_back)
+                             | exc_sig | div_busy | mul_busy | wait_data_addr;
+    wire EX_MEM_flush = exc_sig | div_busy | mul_busy | wait_data_addr
+                      | Branch_or_Jump & ~I_addr_ok ;//warning
     wire [171:0] EX_MEM_in;
     assign EX_MEM_in[31:0] = ID_EX_out[31:0];//PC
     assign EX_MEM_in[36:32] = EX_rd;//rd
@@ -986,7 +1003,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
 
     //MEM_WB
     wire MEM_WB_write_enable = 1;
-    wire MEM_WB_flush = exc_sig;
+    wire MEM_WB_flush = exc_sig | wait_data_back;
     wire [150:0] MEM_WB_in;
     assign MEM_WB_in[31:0] = EX_MEM_out[31:0];
     assign MEM_WB_in[36:32] = MEM_rd;
