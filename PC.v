@@ -12,8 +12,8 @@ module PC( clk, rst, NPC, PC, write, flush);
    always @(posedge clk)begin
     if (rst) 
 //      PC <= 32'h0000_0000;
-      PC <= 32'h1c000000;
-      //PC <= 32'h1BFFFFFC;
+      //PC <= 32'h1c000000;
+      PC <= 32'h1BFFFFFC;
     else
     begin
         if(write) begin 

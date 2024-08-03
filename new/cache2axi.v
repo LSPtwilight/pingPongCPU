@@ -104,12 +104,16 @@ module cache2axi (
 
 reg [127:0] write_buffer;
 reg [1:0] cnt;
+reg       writing;
 
 always@(posedge clk)begin
-    cnt <= !resetn        ? 2'b00 :
-           wvalid&&wready ? cnt+1 : cnt;
-    write_buffer <= !resetn          ? 128'b0 :
-                    awvalid&&awready ? wr_data_data : write_buffer;
+    writing <= !resetn                     ? 1'b0 :
+               awvalid&&awready            ? 1'b1 :
+               wlast&&bvalid&&bready       ? 1'b0 : writing;
+    cnt     <= !resetn                 ? 2'b00 :
+               writing&&wvalid&&wready ? cnt+1 : cnt; // 
+    write_buffer <= !resetn          ? 128'b0  :
+                    wr_req_data ? wr_data_data : write_buffer;
 end
 
 //ar
@@ -152,7 +156,7 @@ assign ret_valid_data = rvalid;
 assign ret_last_data  = rlast;
 assign ret_data_data  = rdata;
 
-assign wr_rdy_data    = awready;
+assign wr_rdy_data    = ~writing;
 //inst
 assign rd_rdy_inst    = arready & !rd_req_data;
 assign ret_valid_inst = rvalid;
