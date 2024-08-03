@@ -3,7 +3,7 @@ module cache_table( input         clk,
                     input         RFWr, 
                     input  [7:0]  Addr, 
                     input         WD, 
-                    output        RD);
+                    output reg    RD);
 
   reg [255:0] rf;
 
@@ -15,8 +15,11 @@ module cache_table( input         clk,
       if (RFWr) begin
         rf[Addr] <= WD;
       end
+      else begin
+        RD <= rf[Addr];
+      end
     end
   end
 
-  assign RD = rf[Addr];
+  //assign RD = rf[Addr];
 endmodule 

@@ -116,6 +116,16 @@ always@(posedge clk)begin
                     wr_req_data ? wr_data_data : write_buffer;
 end
 
+reg  [31: 0] wdata_reg;
+always@(posedge clk)begin
+    case(cnt)
+        2'd0: wdata_reg <= write_buffer[ 31:  0];
+        2'd1: wdata_reg <= write_buffer[ 63: 32];
+        2'd2: wdata_reg <= write_buffer[ 95: 64];
+        2'd3: wdata_reg <= write_buffer[127: 96];
+    endcase
+end
+
 //ar
 assign arid    = 4'd0;
 assign araddr  = rd_req_data ? rd_addr_data : rd_addr_inst;
@@ -142,7 +152,7 @@ assign awprot  = 3'd0;
 assign awvalid = wr_req_data;
 //w
 assign wid    = 4'd0;
-assign wdata  = write_buffer[cnt * 32 +: 32];
+assign wdata  = wdata_reg; //write_buffer[cnt * 32 +: 32];
 assign wstrb  = 4'b1111;
 assign wlast  = cnt==2'b11;//1'd1;
 assign wvalid = 1'b1;

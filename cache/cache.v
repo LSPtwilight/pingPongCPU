@@ -495,7 +495,7 @@ cache_table way0_d_table(
     .rst (~resetn),
     .RFWr(
         w_state == `W_WRITE && write_way == 1'b0
-    ||  state == `MISS && wr_rdy == 1'b1
+    //||  state == `MISS && wr_rdy == 1'b1
     ||  state == `REFILL && reg_replace_way == 1'b0
     ), 
     .Addr(
@@ -517,7 +517,7 @@ cache_table way1_d_table(
     .rst (~resetn),
     .RFWr(
         w_state == `W_WRITE && write_way == 1'b1
-    ||  state == `MISS && wr_rdy == 1'b1
+    //||  state == `MISS && wr_rdy == 1'b1
     ||  state == `REFILL && reg_replace_way == 1'b1
     ), 
     .Addr(
