@@ -148,7 +148,7 @@ wire      hit_write_conflict;
 
 data_bank_ram way0_data_bank_0(
     .addra (
-        look_up ? index : // read
+        look_up && offset[3:2] == 2'd0 ? index : // read
         w_state == `W_WRITE ? write_index : // write
         state == `MISS && wr_rdy == 1'b1 /* MISS -> REPLACE */ ? reg_index :
         state == `REFILL && reg_replace_way == 1'b0 ? reg_replace_index : 
@@ -157,7 +157,7 @@ data_bank_ram way0_data_bank_0(
     .clka  (clk                    ),
     .dina  (
         w_state == `W_WRITE && write_way == 1'b0 && write_offset[3:2] == 2'd0 ? write_wdata :
-        state == `REFILL && reg_replace_way == 1'b0 ? ret_data :
+        state == `REFILL && reg_replace_way == 1'b0 ? refill_wdata :
         32'b0
     ), // [31:0]
     .douta (way0_data[31: 0]       ), // [31:0]
@@ -176,7 +176,7 @@ data_bank_ram way0_data_bank_0(
 
 data_bank_ram way0_data_bank_1(
     .addra (
-        look_up ? index : // read
+        look_up && offset[3:2] == 2'd1 ? index : // read
         w_state == `W_WRITE ? write_index : // write
         state == `MISS && wr_rdy == 1'b1 /* MISS -> REPLACE */ ? reg_index :
         state == `REFILL && reg_replace_way == 1'b0 ? reg_replace_index : 
@@ -204,7 +204,7 @@ data_bank_ram way0_data_bank_1(
 
 data_bank_ram way0_data_bank_2(
     .addra (
-        look_up ? index : // read
+        look_up && offset[3:2] == 2'd2 ? index : // read
         w_state == `W_WRITE ? write_index : // write
         state == `MISS && wr_rdy == 1'b1 /* MISS -> REPLACE */ ? reg_index :
         state == `REFILL && reg_replace_way == 1'b0 ? reg_replace_index : 
@@ -232,7 +232,7 @@ data_bank_ram way0_data_bank_2(
 
 data_bank_ram way0_data_bank_3(
     .addra (
-        look_up ? index : // read
+        look_up && offset[3:2] == 2'd3 ? index : // read
         w_state == `W_WRITE ? write_index : // write
         state == `MISS && wr_rdy == 1'b1 /* MISS -> REPLACE */ ? reg_index :
         state == `REFILL && reg_replace_way == 1'b0 ? reg_replace_index : 
@@ -297,7 +297,7 @@ data_bank_ram way0_data_bank_3(
 /*--------way1 data rams----------*/
 data_bank_ram way1_data_bank_0(
     .addra (
-        look_up ? index : // read
+        look_up && offset[3:2] == 2'd0 ? index : // read
         w_state == `W_WRITE ? write_index : // write
         state == `MISS && wr_rdy == 1'b1 /* MISS -> REPLACE */ ? reg_index :
         state == `REFILL && reg_replace_way == 1'b1 ? reg_replace_index : 
@@ -325,7 +325,7 @@ data_bank_ram way1_data_bank_0(
 
 data_bank_ram way1_data_bank_1(
     .addra (
-        look_up ? index : // read
+        look_up && offset[3:2] == 2'd1 ? index : // read
         w_state == `W_WRITE ? write_index : // write
         state == `MISS && wr_rdy == 1'b1 /* MISS -> REPLACE */ ? reg_index :
         state == `REFILL && reg_replace_way == 1'b1 ? reg_replace_index : 
@@ -353,7 +353,7 @@ data_bank_ram way1_data_bank_1(
 
 data_bank_ram way1_data_bank_2(
     .addra (
-        look_up ? index : // read
+        look_up && offset[3:2] == 2'd2 ? index : // read
         w_state == `W_WRITE ? write_index : // write
         state == `MISS && wr_rdy == 1'b1 /* MISS -> REPLACE */ ? reg_index :
         state == `REFILL && reg_replace_way == 1'b1 ? reg_replace_index : 
@@ -381,7 +381,7 @@ data_bank_ram way1_data_bank_2(
 
 data_bank_ram way1_data_bank_3(
     .addra (
-        look_up ? index : // read
+        look_up && offset[3:2] == 2'd3 ? index : // read
         w_state == `W_WRITE ? write_index : // write
         state == `MISS && wr_rdy == 1'b1 /* MISS -> REPLACE */ ? reg_index :
         state == `REFILL && reg_replace_way == 1'b1 ? reg_replace_index : 
@@ -536,8 +536,8 @@ cache_table way1_d_table(
 
 /*--------------------------DFA----------------------------*/
 
-assign hit_write_conflict = state == `LOOKUP  && 1'b1 /*cache_hit*/ && reg_op == `WRITE && valid == 1'b1 && tag==reg_tag && index==reg_index && offset[3:2]==reg_offset[3:2]
-                         || w_state == `W_WRITE && valid == 1'b1 && tag==write_tag && index==write_index && offset[3:2]==write_offset[3:2];
+assign hit_write_conflict = state == `LOOKUP  && 1'b1 /*cache_hit*/ && reg_op == `WRITE && valid == 1'b1 && tag==reg_tag && index==reg_index && offset[3:2]==reg_offset[3:2] && op==`READ
+                         || w_state == `W_WRITE && valid == 1'b1 && tag==write_tag && index==write_index && offset[3:2]==write_offset[3:2] && op==`READ;
 
 assign look_up   = state == `IDLE    && valid && !hit_write_conflict /* IDLE -> LOOKUP */
                  ||state == `LOOKUP  && 1'b1 /*cache_hit*/ && valid && !hit_write_conflict /* LOOKUP -> LOOKUP */;

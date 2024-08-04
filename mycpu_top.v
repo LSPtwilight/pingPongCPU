@@ -97,6 +97,7 @@ wire D_data_ok;
 
 wire wait_data_addr;   // to be assign
 wire wait_data_back;   // to be assign 
+//reg wait_data_back
 
 // inst cache wires;
 wire inst_cache_valid = 1'b1;
@@ -458,15 +459,13 @@ always @(posedge clk) reset <= ~aresetn;
     wire [31:0] ID_pc;
 
     wire [31:0] EX_csr_data;
-    reg  [31:0] alu_csr_data;
+    //reg  [31:0] alu_csr_data;
+    wire [31:0] alu_csr_data;
     wire [13:0] EX_csr_num;
     wire EX_csr_mask_en;
     wire EX_csr_write;
     wire [31:0] EX_csr_wd;
     wire Branch_or_Jump;
-
-    wire ID_EX_stall;
-    wire ID_EX_flush;
 	
 	//MEM wires
 	wire [4:0] MEM_rd;
@@ -479,6 +478,10 @@ always @(posedge clk) reset <= ~aresetn;
     wire [13:0] MEM_csr_num;
     wire MEM_csr_write;
     wire [31:0] MEM_csr_wd;
+
+    wire [13:0] MEM_csr_num_in;
+    wire MEM_csr_write_in;
+    wire [31:0] MEM_csr_wd_in;
 
     //assign DMType = MEM_DMType;
     
@@ -539,6 +542,31 @@ always @(posedge clk) reset <= ~aresetn;
    wire ID_MemWrite;
    wire [2:0] ID_DMType;
    wire [31:0] ID_pc_;
+
+   //-----------------------------------------------
+    /*wire IF_ID_clear = exc_sig | Branch_or_Jump | (pc==32'h1BFFFFFC);
+    wire IF_ID_stall = stall_signal | div_busy | mul_busy | wait_data_addr | wait_data_back;
+    wire IF_ID_flush = wait_inst_back | wait_inst_addr
+                     | IF_ID_clear;
+    wire IF_ID_write_enable = ~(IF_ID_stall) | IF_ID_clear;
+
+    wire ID_EX_clear = exc_sig | Branch_or_Jump;
+    wire ID_EX_stall = Branch_or_Jump & ~I_addr_ok | div_busy | mul_busy | wait_data_addr | wait_data_back;
+    wire ID_EX_flush = stall_signal
+                     | ID_EX_clear;
+    wire ID_EX_write_enable = ~(ID_EX_stall) | ID_EX_clear;
+
+    wire EX_MEM_clear = exc_sig;
+    wire EX_MEM_stall = wait_data_back;
+    wire EX_MEM_flush = div_busy | mul_busy | wait_data_addr | Branch_or_Jump & ~I_addr_ok
+                     | EX_MEM_clear;
+    wire EX_MEM_write_enable = ~(EX_MEM_stall) | EX_MEM_clear;
+
+    wire MEM_WB_clear = exc_sig;
+    wire MEM_WB_stall = 1'b0;
+    wire MEM_WB_flush = wait_data_back
+                     | MEM_WB_clear;
+    wire MEM_WB_write_enable = ~(MEM_WB_stall) | MEM_WB_clear;*/
    
    // instantiation of control unit
 	ctrl U_ctrl(
@@ -626,9 +654,9 @@ always @(posedge clk) reset <= ~aresetn;
         //output
         .RDout      (csr_data),   /*ID*/
         /* forwarding */
-        .MEM_csr_write (MEM_csr_write),
-        .MEM_csr_num   (MEM_csr_num),
-        .MEM_csr_wd    (MEM_csr_wd),
+        .MEM_csr_write (MEM_csr_write_in),
+        .MEM_csr_num   (MEM_csr_num_in),
+        .MEM_csr_wd    (MEM_csr_wd_in),
         /* external INT signals */
         .HWI_in(8'b0),
         //.TI_in (1'b0),
@@ -636,11 +664,11 @@ always @(posedge clk) reset <= ~aresetn;
         // CPU states
         //.IE(IE),//output
         /* exceptions */
-        .exc_sig   (exc_sig),
+        .exc_sig   (/*exc_sig*/exc_sig & (I_addr_ok & ~PC_stall)),
         .Ecode     (MEM_Ecode_out),
         .EsubCode  (MEM_EsubCode_out),
         .MEM_aluout(MEM_aluout), // for BADV
-        .PC        (MEM_pc),//interupted instruction
+        .PC        (/*MEM_pc*/EX_MEM_out[31:0]),//interupted instruction
         .ERTN      (EX_ERTN),
         .EENTRY_out(EENTRY),//output
         .ERA_out   (ERA),//output
@@ -712,8 +740,8 @@ end
 
 //-----dm_controller--------------
 
-assign data_cache_valid = EX_MemRead | EX_MemWrite;
-assign data_cache_op    = EX_MemWrite;
+assign data_cache_valid = (EX_MemRead | EX_MemWrite) & ~EX_exc_req_out;
+assign data_cache_op    = EX_MemWrite & ~EX_exc_req_out;
 
 
 wire [31:0] data_read/* = data_sram_rdata*/;
@@ -807,7 +835,7 @@ assign MEM_EsubCode_out = MEM_exc_req_in==1'b1 ? MEM_EsubCode_in:
                          9'b0;
                          //...
 
-assign exc_sig = MEM_exc_req_out/* & IE*/;
+assign exc_sig = MEM_exc_req_out;/* & IE*/ //& I_addr_ok;
 
 //-----Branch or Jump-------------
 
@@ -866,7 +894,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
             reg_alu_in_2 <= alu_in2_;
             use_reg_alu_in <= 1'b1;
         end
-        else if(~ID_EX_stall | ID_EX_flush)
+        else if(~ID_EX_stall | (ID_EX_flush & ID_EX_write_enable))
         begin
             use_reg_alu_in <= 1'b0;
         end
@@ -882,17 +910,67 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     ForwardingUnit #(.WIDTH(14)) forwardingCSR2ALU(.MEM_RegWrite(MEM_csr_write), .MEM_rd(MEM_csr_num), 
         .WB_RegWrite(WB_csr_write), .WB_rd(WB_csr_num), .EX_rs(EX_csr_num), .ForwardSignal(ForwardCSR2ALU));
     
+    reg [31: 0] alu_csr_data_;
+
     always @(*)
     begin
         case(ForwardCSR2ALU)
             /*2'b00: alu_csr_data <= csr_num != `TICLR ? EX_csr_data : 32'b0;// from regfile
             2'b10: alu_csr_data <= csr_num != `TICLR ? MEM_csr_wd : 32'b0; // from MEM
             2'b01: alu_csr_data <= csr_num != `TICLR ? WB_csr_wd : 32'b0;  // from WB*/
-            2'b00: alu_csr_data <= EX_csr_data;// from regfile
-            2'b10: alu_csr_data <= MEM_csr_wd; // from MEM
-            2'b01: alu_csr_data <= WB_csr_wd;  // from WB
+            2'b00: alu_csr_data_ <= EX_csr_data;// from regfile
+            2'b10: alu_csr_data_ <= MEM_csr_wd; // from MEM
+            2'b01: alu_csr_data_ <= WB_csr_wd;  // from WB
         endcase
     end
+
+    reg [31: 0] reg_alu_csr_data;
+    reg         use_reg_alu_csr_data;
+
+    always@(posedge clk)begin
+        if (reset)begin
+            use_reg_alu_csr_data <= 1'b0;
+        end else if(ID_EX_stall & ~use_reg_alu_csr_data)// flush?
+        begin
+            reg_alu_csr_data <= alu_csr_data_;
+            use_reg_alu_csr_data <= 1'b1;
+        end
+        else if(~ID_EX_stall | (ID_EX_flush & ID_EX_write_enable))
+        begin
+            use_reg_alu_csr_data <= 1'b0;
+        end
+    end
+
+    assign alu_csr_data = use_reg_alu_csr_data ? reg_alu_csr_data : alu_csr_data_;
+
+//-------------------------------
+
+    reg [13:0] reg_MEM_csr_num;
+    reg        reg_MEM_csr_write;
+    reg [31:0] reg_MEM_csr_wd;
+    
+    reg use_reg_MEM_csr;
+
+    always@(posedge clk)begin
+        if (reset)begin
+            use_reg_MEM_csr <= 1'b0;
+        end else if(ID_EX_stall & ~use_reg_MEM_csr)// flush?
+        begin
+            reg_MEM_csr_num   <= MEM_csr_num;
+            reg_MEM_csr_write <= MEM_csr_write;
+            reg_MEM_csr_wd    <= MEM_csr_wd;
+            use_reg_MEM_csr <= 1'b1;
+        end
+        else if(~ID_EX_stall | (ID_EX_flush & ID_EX_write_enable))
+        begin
+            use_reg_MEM_csr <= 1'b0;
+        end
+    end
+    
+    assign MEM_csr_num_in   = use_reg_MEM_csr ? reg_MEM_csr_num   : MEM_csr_num;
+    assign MEM_csr_write_in = use_reg_MEM_csr ? reg_MEM_csr_write : MEM_csr_write;
+    assign MEM_csr_wd_in    = use_reg_MEM_csr ? reg_MEM_csr_wd    : MEM_csr_wd;
+
 
     /*// EENTRY
     ForwardingUnit #(.WIDTH(14)) forwardingCSR2ALU(.MEM_RegWrite(1'b0), .MEM_rd(14'b0), 
@@ -908,8 +986,21 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
 
 //-----pipe registers--------------
 
+    reg  read_data_sent = 1'b0;
+
+    always@(posedge clk)begin
+        if(reset)
+            read_data_sent <= 1'b0;
+        else if(data_cache_valid & D_addr_ok)
+            read_data_sent <= 1'b1;
+        else if(D_data_ok)
+            read_data_sent <= 1'b0;
+    end
+
+
     assign wait_data_addr = (EX_MemRead  | EX_MemWrite      ) & ~D_addr_ok;
-    assign wait_data_back = (MEM_MemRead | MEM_MemWrite/*?*/) & ~D_data_ok;
+    //assign wait_data_back = (MEM_MemRead | MEM_MemWrite/*?*/) & ~D_data_ok;
+    assign wait_data_back = read_data_sent & ~D_data_ok;
 
 
     reg [31: 0] reg_inst;
@@ -927,7 +1018,7 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
             reg_inst     <= inst_sram_rdata;
             use_reg_inst <= 1'b1;
         end
-        else if(~IF_ID_stall & ~IF_ID_flush)
+        else if(~IF_ID_stall & ~IF_ID_flush | exc_sig)
         begin
             use_reg_inst <= 1'b0;
         end
@@ -962,8 +1053,8 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
     
     assign ID_EX_stall = Branch_or_Jump & ~I_addr_ok | div_busy | mul_busy | wait_data_addr | wait_data_back;
     //ID_EX
-    wire ID_EX_write_enable = ~(ID_EX_stall/*div_busy | mul_busy | wait_data_addr | wait_data_back*/) 
-                            /*| Branch_or_Jump */| exc_sig | stall_signal;
+    assign ID_EX_write_enable = ~(ID_EX_stall/*div_busy | mul_busy | wait_data_addr | wait_data_back*/) 
+                              /*| Branch_or_Jump*/ | exc_sig ;//| stall_signal;
     assign ID_EX_flush = stall_signal | Branch_or_Jump | exc_sig;
     wire [268:0] ID_EX_in;
     assign ID_EX_in[31:0] = IF_ID_out[31:0];//PC
@@ -1031,9 +1122,12 @@ assign exc_sig = MEM_exc_req_out/* & IE*/;
 
     gnrl_dff #(32) id_ex_pc(clk, reset, ID_EX_write_enable, ID_EX_flush, ID_pc, EX_pc);
     
+
+    wire EX_MEM_clear;
+    wire EX_MEM_stall = wait_data_back;
     //EX_MEM
-    wire EX_MEM_write_enable = ~(wait_data_back)
-                             | exc_sig | div_busy | mul_busy | wait_data_addr;
+    wire EX_MEM_write_enable = ~(wait_data_back | exc_sig & ~(I_addr_ok & ~PC_stall));
+                             //| exc_sig ;//| div_busy | mul_busy | wait_data_addr;
     wire EX_MEM_flush = exc_sig | div_busy | mul_busy | wait_data_addr
                       | Branch_or_Jump & ~I_addr_ok ;//warning
     wire [171:0] EX_MEM_in;

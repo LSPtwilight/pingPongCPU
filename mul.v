@@ -66,12 +66,15 @@ module mul(
 		  	end
 		  	`MulOn:	begin               //MulOn
 		  		if (annul_i == 1'b0) begin
-		  			if (cnt != 6'b001000) begin 	// cnt reach 8
-                        product <= product + (
+		  			if (cnt != 6'b100000) begin 	// cnt reach 8 32
+                        /*product <= product + (
                         (({64{shift[0]}} & (mul_temp << 0)) + ({64{shift[1]}} & (mul_temp << 1))) +
                         (({64{shift[2]}} & (mul_temp << 2)) + ({64{shift[3]}} & (mul_temp << 3))) );
                         shift    <= shift    >> 4;
-                        mul_temp <= mul_temp << 4;
+                        mul_temp <= mul_temp << 4;*/
+						product <= product + ({64{shift[0]}} & mul_temp);
+						shift    <= shift    >> 1;
+						mul_temp <= mul_temp << 1;
                     	cnt <= cnt + 1;
                     end else begin
                         if ((signed_mul_i == 1'b1) && ((/*opdata1_i[31] ^ opdata2_i[31]*/sign_1 ^ sign_2) == 1'b1)) begin
@@ -85,7 +88,7 @@ module mul(
 		  		end	
 		  	end
 		  	`MulEnd: begin               //MulEnd
-        		result_o 	<= product;  	// 高32为余数，低32为商
+        		result_o 	<= product;  	// �?32为余数，�?32为商
           		ready_o 	<= 1'b1;
           		if (start_i == 1'b0) begin
           			state 	<= `MulIdle;

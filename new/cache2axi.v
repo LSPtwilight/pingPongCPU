@@ -46,18 +46,6 @@ module cache2axi (
     input     wire                 bvalid  ,
     output    wire                 bready  ,
 
-    // 类sram接口
-    /*
-    input   wire             req_data                    ,
-    input   wire              wr_data                    ,
-    input   wire [1:0]      size_data                    ,
-    input   wire [31:0]     addr_data                    ,
-    input   wire [3:0]     wstrb_data                    ,
-    input   wire [31:0]    wdata_data                    ,
-    output  wire         addr_ok_data                    ,
-    output  wire         data_ok_data                    ,
-    output  wire [31:0]    rdata_data                    ,
-    */
     // with AXI data cache
     input  wire         rd_req_data,
     input  wire [ 2: 0] rd_type_data, // 3'b100 cache line
@@ -89,41 +77,54 @@ module cache2axi (
     input  wire [ 3: 0] wr_wstrb_inst,// 4'b0000
     input  wire [127:0] wr_data_inst, // ignore
     output wire         wr_rdy_inst
-/*
-    input   wire             req_inst                    ,
-    input   wire              wr_inst                    ,
-    input   wire [1:0]      size_inst                    ,
-    input   wire [31:0]     addr_inst                    ,
-    input   wire [3:0]     wstrb_inst                    ,
-    input   wire [31:0]    wdata_inst                    ,
-    output  wire         addr_ok_inst                    ,
-    output  wire         data_ok_inst                    ,
-    output  wire [31:0]    rdata_inst                    */
 
 );
 
 reg [127:0] write_buffer;
-reg [1:0] cnt;
+reg [  2:0] cnt;
 reg       writing;
+reg       wvalid_r;
+
+reg [31: 0] wr_addr_data_r;
 
 always@(posedge clk)begin
     writing <= !resetn                     ? 1'b0 :
-               awvalid&&awready            ? 1'b1 :
-               wlast&&bvalid&&bready       ? 1'b0 : writing;
-    cnt     <= !resetn                 ? 2'b00 :
-               writing&&wvalid&&wready ? cnt+1 : cnt; // 
+/*awvalid&&awready*/wr_req_data            ? 1'b1 :
+               /*wlast&&*/bvalid&&bready   ? 1'b0 : writing;
+    wr_addr_data_r <= !resetn              ? 32'b0 :
+                      wr_req_data          ? wr_addr_data : wr_addr_data_r;
+    cnt     <= !resetn                     ? 3'b0 :
+               writing&&wvalid&&wready     ? cnt+1 : 
+               /*wlast&&*/bvalid&&bready   ? 3'b0  : cnt;
+    wvalid_r <= !resetn                    ? 1'b0 :
+                awvalid&&awready           ? 1'b1 :
+                /*wlast&&*/bvalid&&bready  ? 1'b0 : wvalid_r;
     write_buffer <= !resetn          ? 128'b0  :
                     wr_req_data ? wr_data_data : write_buffer;
 end
 
 reg  [31: 0] wdata_reg;
-always@(posedge clk)begin
-    case(cnt)
-        2'd0: wdata_reg <= write_buffer[ 31:  0];
-        2'd1: wdata_reg <= write_buffer[ 63: 32];
-        2'd2: wdata_reg <= write_buffer[ 95: 64];
-        2'd3: wdata_reg <= write_buffer[127: 96];
-    endcase
+/*always@(posedge clk)begin
+    if(wr_req_data)begin
+        wdata_reg <= wr_data_data[31: 0];
+    end else begin
+        case(cnt)
+            //3'd0: wdata_reg <= write_buffer[ 31:  0];
+            3'd1: wdata_reg <= write_buffer[ 63: 32];
+            3'd2: wdata_reg <= write_buffer[ 95: 64];
+            3'd3: wdata_reg <= write_buffer[127: 96];
+        endcase
+    end
+    //wdata_reg <= write_buffer[cnt*32 + 31 : cnt*32];
+end*/
+
+always@(*)begin
+  case(cnt)
+    3'd0: wdata_reg <= write_buffer[ 31:  0];
+    3'd1: wdata_reg <= write_buffer[ 63: 32];
+    3'd2: wdata_reg <= write_buffer[ 95: 64];
+    3'd3: wdata_reg <= write_buffer[127: 96];
+  endcase
 end
 
 //ar
@@ -142,20 +143,37 @@ assign rready = 1'b1;
 
 //aw
 assign awid    = 4'd0;
-assign awaddr  = wr_addr_data;
+assign awaddr  = wr_addr_data_r;
 assign awlen   = 8'd3; // 3+1 //8'd0;
 assign awsize  = 3'b010;
 assign awburst = 2'b01; // INCR transaction
 assign awlock  = 2'd0;
 assign awcache = 4'd0;
 assign awprot  = 3'd0;
-assign awvalid = wr_req_data;
+reg awvalid_prepare;
+always@(posedge clk) begin
+    if(~resetn) begin
+        awvalid_prepare <= 1'b0;
+    end
+    else if(wr_req_data) begin
+        awvalid_prepare <= 1'b1;
+    end
+    else if(awready) begin
+        awvalid_prepare <= 1'b0;
+    end
+    else begin
+        awvalid_prepare <= awvalid_prepare;
+    end
+end
+assign awvalid = awvalid_prepare;
+
+//wr_req_data;
 //w
 assign wid    = 4'd0;
 assign wdata  = wdata_reg; //write_buffer[cnt * 32 +: 32];
 assign wstrb  = 4'b1111;
-assign wlast  = cnt==2'b11;//1'd1;
-assign wvalid = 1'b1;
+assign wlast  = (cnt==3'd3)&&(writing);//1'd1;
+assign wvalid = wvalid_r;//1'b1;
 //b
 assign bready = 1'b1;
 
@@ -168,7 +186,7 @@ assign ret_data_data  = rdata;
 
 assign wr_rdy_data    = ~writing;
 //inst
-assign rd_rdy_inst    = arready & !rd_req_data;
+assign rd_rdy_inst    = arready & ~rd_req_data;
 assign ret_valid_inst = rvalid;
 assign ret_last_inst  = rlast;
 assign ret_data_inst  = rdata;

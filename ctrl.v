@@ -549,7 +549,7 @@ assign ALUOp[0] = inst_add_w | inst_sltu | inst_or | inst_slli_w | inst_srai_w |
 
     assign INE = ~
     (        //(PC == 32'b0) // reset
-            (inst==32'b0 && PC!=32'h1c074aa0) // a trick, should be modified!!!
+            (inst==32'b0 && PC!=32'h1c074b40) // a trick, should be modified!!!
     |        inst_add_w
     |        inst_sub_w
     |        inst_slt
